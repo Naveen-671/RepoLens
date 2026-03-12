@@ -1,7 +1,9 @@
 import { analyzeRepository, type AnalyzeOptions } from '../parser';
+import { runAiInference } from '../ai/inference';
 
 export interface CliRunResult {
   artifactPath: string;
+  aiArtifactPath: string;
   repoPath: string;
   fileCount: number;
   nodeCount: number;
@@ -12,14 +14,20 @@ export interface CliRunResult {
  * Runs repository analysis and writes parser/graph JSON artifacts.
  */
 export async function run(repoUrlOrPath: string, options: AnalyzeOptions = {}): Promise<CliRunResult> {
-  const result = await analyzeRepository(repoUrlOrPath, options);
+  const parserResult = await analyzeRepository(repoUrlOrPath, options);
+  const aiResult = await runAiInference({
+    repoHash: parserResult.repoHash,
+    repoPath: parserResult.repoPath,
+    analysis: parserResult.analysis,
+  });
 
   return {
-    artifactPath: result.analysisPath,
-    repoPath: result.repoPath,
-    fileCount: result.analysis.files.length,
-    nodeCount: result.analysis.nodes.length,
-    edgeCount: result.analysis.edges.length,
+    artifactPath: parserResult.analysisPath,
+    aiArtifactPath: aiResult.aiPath,
+    repoPath: parserResult.repoPath,
+    fileCount: parserResult.analysis.files.length,
+    nodeCount: parserResult.analysis.nodes.length,
+    edgeCount: parserResult.analysis.edges.length,
   };
 }
 
@@ -72,6 +80,7 @@ async function main() {
 
   const result = await run(input, options);
   process.stdout.write(`Artifact written: ${result.artifactPath}\n`);
+  process.stdout.write(`AI artifact written: ${result.aiArtifactPath}\n`);
   process.stdout.write(`Files: ${result.fileCount}, Nodes: ${result.nodeCount}, Edges: ${result.edgeCount}\n`);
 }
 
