@@ -11,6 +11,7 @@ import {
 } from './repositoryService';
 import { chatWithRepository } from './chatService';
 import { generateRepoFlows, getRepoFlows, resolveFlowDownloadPath } from './flowService';
+import { createRepoPullRequest, createRevertPullRequest } from './prService';
 
 /**
  * Creates the HTTP server app with health endpoints.
@@ -128,6 +129,39 @@ export function createServer() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(404).json({ error: message });
+    }
+  });
+
+  app.post('/repo-action/:repoId/pr', async (req, res) => {
+    try {
+      const body = req.body as {
+        changes: Array<{ path: string; patch: string }>;
+        title: string;
+        body: string;
+        requireApproval: boolean;
+      };
+
+      const result = await createRepoPullRequest(req.params.repoId, {
+        changes: body.changes,
+        title: body.title,
+        body: body.body,
+        requireApproval: body.requireApproval,
+      });
+
+      res.status(200).json(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  app.post('/repo-action/:repoId/revert', async (req, res) => {
+    try {
+      const result = await createRevertPullRequest(req.params.repoId);
+      res.status(200).json(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ error: message });
     }
   });
 
