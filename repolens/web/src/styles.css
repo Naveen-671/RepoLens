@@ -217,6 +217,17 @@ body::before {
   font-weight: 600;
   color: var(--accent-indigo);
   letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 200ms;
+}
+.cluster-chip:hover {
+  background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(167,139,250,0.2));
+  border-color: rgba(99,102,241,0.4);
+}
+.cluster-chip--active {
+  background: linear-gradient(135deg, rgba(99,102,241,0.35), rgba(167,139,250,0.25));
+  border-color: var(--accent-indigo);
+  box-shadow: 0 0 8px rgba(99,102,241,0.3);
 }
 
 .chip-description {
@@ -428,6 +439,12 @@ body::before {
   background: rgba(167,139,250,0.12);
   color: var(--accent-violet);
   border: 1px solid rgba(167,139,250,0.2);
+}
+
+.stat-badge--rose {
+  background: rgba(251,113,133,0.12);
+  color: var(--accent-rose);
+  border: 1px solid rgba(251,113,133,0.2);
 }
 
 .small-btn:hover {

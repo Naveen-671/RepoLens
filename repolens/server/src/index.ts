@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
@@ -14,6 +15,7 @@ import {
 import { chatWithRepository } from './chatService';
 import { generateRepoFlows, getRepoFlows, resolveFlowDownloadPath } from './flowService';
 import { createRepoPullRequest, createRevertPullRequest } from './prService';
+import { readArtifactJson, type RepoGraphPayload } from './artifacts';
 
 /**
  * Creates the HTTP server app with health endpoints.
@@ -87,7 +89,13 @@ export function createServer() {
 
       if (largeGraph) {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        getGraphStream(repoId).pipe(res);
+        const stream = getGraphStream(repoId);
+        stream.on('error', (err) => {
+          if (!res.headersSent) {
+            res.status(500).json({ error: err.message });
+          }
+        });
+        stream.pipe(res);
         return;
       }
 
@@ -121,6 +129,30 @@ export function createServer() {
     }
   });
 
+  app.get('/function-details/:repoId/:filePath(*)', async (req, res) => {
+    try {
+      const graph = await readArtifactJson<RepoGraphPayload>(req.params.repoId, 'graph.json');
+      const decodedPath = decodeURIComponent(req.params.filePath);
+      const node = graph.nodes.find((n) => n.id === decodedPath);
+      if (!node) {
+        res.status(404).json({ error: `File not found: ${decodedPath}` });
+        return;
+      }
+      res.setHeader('Cache-Control', 'public, max-age=30');
+      res.status(200).json({
+        path: node.id,
+        functionDetails: node.functionDetails ?? [],
+        classDetails: node.classDetails ?? [],
+        dataFlowIn: node.dataFlowIn ?? [],
+        dataFlowOut: node.dataFlowOut ?? [],
+        externalImports: node.externalImports ?? [],
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(404).json({ error: message });
+    }
+  });
+
   app.post('/chat/:repoId', async (req, res) => {
     try {
       const body = req.body as { query?: string; topK?: number };
@@ -129,6 +161,27 @@ export function createServer() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(400).json({ error: message });
+    }
+  });
+
+  app.get('/repo-health/:repoId', async (req, res) => {
+    try {
+      const graph = await readArtifactJson<RepoGraphPayload>(req.params.repoId, 'graph.json');
+      res.setHeader('Cache-Control', 'public, max-age=30');
+      res.status(200).json(graph.repoMetrics ?? {
+        totalFiles: graph.nodes.length,
+        totalLinesOfCode: 0,
+        totalFunctions: 0,
+        totalClasses: 0,
+        totalInterfaces: 0,
+        avgComplexity: 1,
+        avgHealthScore: 0.5,
+        complexityHotspots: [],
+        largestFiles: [],
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(404).json({ error: message });
     }
   });
 
@@ -156,7 +209,11 @@ export function createServer() {
   app.get('/repo-flows/:repoId/download/:flowId', (req, res) => {
     try {
       const filePath = resolveFlowDownloadPath(req.params.repoId, req.params.flowId);
-      res.download(filePath);
+      res.download(filePath, (err) => {
+        if (err && !res.headersSent) {
+          res.status(404).json({ error: err.message });
+        }
+      });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(404).json({ error: message });

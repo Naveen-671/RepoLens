@@ -28,11 +28,23 @@ export interface CriticalFileScore {
   score: number;
 }
 
+export interface RepoOverview {
+  purpose: string;
+  techStack: string[];
+  languages: Array<{ name: string; percentage: number }>;
+  frameworks: string[];
+  buildTools: string[];
+  entryPoints: string[];
+  directoryPurposes: Array<{ directory: string; purpose: string }>;
+  keyInsights: string[];
+}
+
 export interface AiArtifacts {
   fileSummaries: FileSummary[];
   clusters: FeatureCluster[];
   architecture: ArchitectureResult;
   criticalFiles: CriticalFileScore[];
+  repoOverview?: RepoOverview;
   errors?: string[];
 }
 
@@ -59,12 +71,14 @@ export async function runAiInference(
   const clusters = await buildFeatureClusters(summaries, provider, errors);
   const architecture = await inferArchitecture(summaries, input.analysis.edges, provider, errors);
   const criticalFiles = rankCriticalFiles(input.analysis, summaries);
+  const repoOverview = await inferRepoOverview(input, summaries, architecture, provider, errors);
 
   const artifacts: AiArtifacts = {
     fileSummaries: summaries,
     clusters,
     architecture,
     criticalFiles,
+    repoOverview,
   };
 
   if (errors.length > 0) {
@@ -326,6 +340,171 @@ function rankCriticalFiles(analysis: RepoAnalysis, summaries: FileSummary[]): Cr
     .sort((a, b) => b.score - a.score)
     .slice(0, 10)
     .map((item) => ({ file: item.file, score: item.score }));
+}
+
+/**
+ * Infers a comprehensive repository overview using file summaries, architecture, and static analysis.
+ */
+async function inferRepoOverview(
+  input: AiInferenceInput,
+  summaries: FileSummary[],
+  architecture: ArchitectureResult,
+  provider: AiProvider,
+  errors: string[],
+): Promise<RepoOverview> {
+  // Detect tech stack statically from file extensions and names
+  const detected = detectTechStackFromFiles(input.analysis);
+
+  // Build directory structure summary
+  const dirMap = new Map<string, number>();
+  for (const file of input.analysis.files) {
+    const parts = file.path.split('/');
+    const topDir = parts.length > 1 ? parts[0] : '.';
+    dirMap.set(topDir, (dirMap.get(topDir) ?? 0) + 1);
+  }
+  const topDirs = [...dirMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([dir, count]) => `${dir}/ (${count} files)`);
+
+  // Truncate summaries for prompt
+  const summarySnippets = summaries.slice(0, 30).map(
+    (s) => `${s.path}: ${s.summary}`,
+  );
+
+  const prompt = [
+    'You are an expert software engineer. Given a repository\'s file summaries, detected tech stack, directory structure, and architecture style, produce a comprehensive overview.',
+    '',
+    `Architecture: ${architecture.architectureType} — ${architecture.briefExplanation}`,
+    `Directories: ${topDirs.join(', ')}`,
+    `Detected: languages=${detected.languages.map((l) => l.name).join(',')}, frameworks=${detected.frameworks.join(',')}, buildTools=${detected.buildTools.join(',')}`,
+    '',
+    'File summaries (sample):',
+    summarySnippets.join('\n'),
+    '',
+    'Produce JSON with these fields:',
+    '- purpose: 1-2 sentence description of what this repository does and who it\'s for',
+    '- techStack: array of key technologies used (e.g. ["React","Express","PostgreSQL","TypeScript"])',
+    '- entryPoints: array of 1-5 main entry point file paths',
+    '- directoryPurposes: array of {directory, purpose} for the top directories',
+    '- keyInsights: array of 3-5 notable observations about the codebase (patterns, antipatterns, strengths)',
+    '',
+    'Output JSON only.',
+  ].join('\n');
+
+  try {
+    const completion = await provider.generate(prompt, { maxTokens: 800, temperature: 0.2 });
+    const json = parseJsonFromText<{
+      purpose?: string;
+      techStack?: string[];
+      entryPoints?: string[];
+      directoryPurposes?: Array<{ directory: string; purpose: string }>;
+      keyInsights?: string[];
+    }>(completion);
+
+    return {
+      purpose: json?.purpose ?? 'A software project.',
+      techStack: json?.techStack ?? detected.frameworks,
+      languages: detected.languages,
+      frameworks: detected.frameworks,
+      buildTools: detected.buildTools,
+      entryPoints: json?.entryPoints ?? [],
+      directoryPurposes: json?.directoryPurposes ?? [],
+      keyInsights: json?.keyInsights ?? [],
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    errors.push(`overview:${message}`);
+    return {
+      purpose: 'A software project.',
+      techStack: detected.frameworks,
+      languages: detected.languages,
+      frameworks: detected.frameworks,
+      buildTools: detected.buildTools,
+      entryPoints: [],
+      directoryPurposes: [],
+      keyInsights: [],
+    };
+  }
+}
+
+/**
+ * Detects tech stack from file extensions, filenames, and common config files.
+ */
+function detectTechStackFromFiles(analysis: RepoAnalysis): {
+  languages: Array<{ name: string; percentage: number }>;
+  frameworks: string[];
+  buildTools: string[];
+} {
+  const extCount = new Map<string, number>();
+  const filenames = new Set<string>();
+
+  for (const file of analysis.files) {
+    const ext = path.extname(file.path).toLowerCase();
+    if (ext) extCount.set(ext, (extCount.get(ext) ?? 0) + 1);
+    filenames.add(path.basename(file.path).toLowerCase());
+  }
+
+  // Language detection from extensions
+  const extToLang: Record<string, string> = {
+    '.ts': 'TypeScript', '.tsx': 'TypeScript', '.js': 'JavaScript', '.jsx': 'JavaScript',
+    '.py': 'Python', '.java': 'Java', '.go': 'Go', '.rs': 'Rust', '.rb': 'Ruby',
+    '.cs': 'C#', '.cpp': 'C++', '.c': 'C', '.swift': 'Swift', '.kt': 'Kotlin',
+    '.php': 'PHP', '.vue': 'Vue', '.svelte': 'Svelte', '.dart': 'Dart',
+  };
+
+  const langCount = new Map<string, number>();
+  for (const [ext, count] of extCount) {
+    const lang = extToLang[ext];
+    if (lang) langCount.set(lang, (langCount.get(lang) ?? 0) + count);
+  }
+
+  const totalLangFiles = [...langCount.values()].reduce((s, c) => s + c, 0) || 1;
+  const languages = [...langCount.entries()]
+    .map(([name, count]) => ({ name, percentage: Math.round((count / totalLangFiles) * 100) }))
+    .sort((a, b) => b.percentage - a.percentage);
+
+  // Framework detection from imports and config files
+  const frameworks: string[] = [];
+  const allImports = new Set(analysis.files.flatMap((f) => f.externalImports ?? []));
+
+  const frameworkPatterns: Array<[string, string]> = [
+    ['react', 'React'], ['next', 'Next.js'], ['vue', 'Vue.js'], ['angular', 'Angular'],
+    ['svelte', 'Svelte'], ['express', 'Express'], ['fastify', 'Fastify'], ['koa', 'Koa'],
+    ['nest', 'NestJS'], ['django', 'Django'], ['flask', 'Flask'], ['spring', 'Spring'],
+    ['rails', 'Rails'], ['gin', 'Gin'], ['fiber', 'Fiber'],
+    ['prisma', 'Prisma'], ['typeorm', 'TypeORM'], ['mongoose', 'Mongoose'], ['sequelize', 'Sequelize'],
+    ['tailwindcss', 'Tailwind CSS'], ['bootstrap', 'Bootstrap'],
+    ['jest', 'Jest'], ['vitest', 'Vitest'], ['mocha', 'Mocha'], ['pytest', 'pytest'],
+    ['redux', 'Redux'], ['zustand', 'Zustand'], ['mobx', 'MobX'],
+    ['graphql', 'GraphQL'], ['trpc', 'tRPC'], ['socket.io', 'Socket.IO'],
+  ];
+
+  for (const [pattern, name] of frameworkPatterns) {
+    if ([...allImports].some((imp) => imp.toLowerCase().includes(pattern))) {
+      frameworks.push(name);
+    }
+  }
+
+  // Build tool detection from config files
+  const buildTools: string[] = [];
+  const configPatterns: Array<[string, string]> = [
+    ['package.json', 'npm'], ['pnpm-lock.yaml', 'pnpm'], ['yarn.lock', 'Yarn'],
+    ['tsconfig.json', 'TypeScript'], ['vite.config', 'Vite'], ['webpack.config', 'Webpack'],
+    ['rollup.config', 'Rollup'], ['esbuild', 'esbuild'],
+    ['dockerfile', 'Docker'], ['docker-compose', 'Docker Compose'],
+    ['.github', 'GitHub Actions'], ['makefile', 'Make'],
+    ['cargo.toml', 'Cargo'], ['go.mod', 'Go Modules'], ['build.gradle', 'Gradle'],
+    ['pom.xml', 'Maven'], ['requirements.txt', 'pip'], ['pyproject.toml', 'Poetry/pip'],
+  ];
+
+  for (const [pattern, name] of configPatterns) {
+    if ([...filenames].some((f) => f.includes(pattern))) {
+      buildTools.push(name);
+    }
+  }
+
+  return { languages, frameworks, buildTools };
 }
 
 /**

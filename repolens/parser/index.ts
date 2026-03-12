@@ -16,6 +16,29 @@ export interface AnalyzeOptions {
   force?: boolean;
 }
 
+export interface FunctionDetail {
+  name: string;
+  params: Array<{ name: string; type: string }>;
+  returnType: string;
+  description: string;
+  lineNumber: number;
+  complexity: number;
+  isAsync: boolean;
+  isExported: boolean;
+  callsTo: string[];
+  calledBy: string[];
+}
+
+export interface ClassDetail {
+  name: string;
+  methods: string[];
+  properties: string[];
+  extends: string;
+  implements: string[];
+  isExported: boolean;
+  lineNumber: number;
+}
+
 export interface FileAnalysis {
   path: string;
   size: number;
@@ -25,6 +48,17 @@ export interface FileAnalysis {
   functions: string[];
   classes: string[];
   calls: string[];
+  linesOfCode: number;
+  blankLines: number;
+  commentLines: number;
+  complexity: number;
+  interfaces: string[];
+  typeAliases: string[];
+  hasDefaultExport: boolean;
+  functionDetails: FunctionDetail[];
+  classDetails: ClassDetail[];
+  dataFlowIn: string[];
+  dataFlowOut: string[];
 }
 
 export interface AnalysisNode {
@@ -179,6 +213,7 @@ export async function analyzeFile(repoPath: string, relativeFilePath: string): P
   const treeSitterParsed = await attemptTreeSitterParse(sourceText, extension);
   if (treeSitterParsed) {
     const imports = dedupeSort(treeSitterParsed.imports);
+    const lines = sourceText.split(/\r?\n/);
     return {
       path: relativeFilePath,
       size: stats.size,
@@ -188,6 +223,26 @@ export async function analyzeFile(repoPath: string, relativeFilePath: string): P
       functions: dedupeSort(treeSitterParsed.functions),
       classes: dedupeSort(treeSitterParsed.classes),
       calls: dedupeSort(treeSitterParsed.calls),
+      linesOfCode: lines.length,
+      blankLines: lines.filter((l) => l.trim().length === 0).length,
+      commentLines: lines.filter((l) => {
+        const t = l.trim();
+        return t.startsWith('//') || t.startsWith('#') || t.startsWith('/*') || t.startsWith('*');
+      }).length,
+      complexity: computeCyclomaticComplexity(sourceText),
+      interfaces: [],
+      typeAliases: [],
+      hasDefaultExport: /export\s+default\b/.test(sourceText),
+      functionDetails: dedupeSort(treeSitterParsed.functions).map((name) => ({
+        name, params: [], returnType: 'unknown', description: '', lineNumber: 0,
+        complexity: 1, isAsync: false, isExported: false, callsTo: [], calledBy: [],
+      })),
+      classDetails: dedupeSort(treeSitterParsed.classes).map((name) => ({
+        name, methods: [], properties: [], extends: '', implements: [],
+        isExported: false, lineNumber: 0,
+      })),
+      dataFlowIn: dedupeSort(imports.filter((i) => i.startsWith('.'))),
+      dataFlowOut: dedupeSort(treeSitterParsed.exports),
     };
   }
 
@@ -195,7 +250,7 @@ export async function analyzeFile(repoPath: string, relativeFilePath: string): P
 }
 
 /**
- * Uses ts-morph to parse TS/JS and gather rich metadata.
+ * Uses ts-morph to parse TS/JS and gather rich metadata including function details.
  */
 function analyzeWithTsMorph(
   relativeFilePath: string,
@@ -224,21 +279,161 @@ function analyzeWithTsMorph(
       }
     });
 
-  const exports = [...sourceFile.getExportedDeclarations().keys()];
-  const functions = sourceFile
-    .getFunctions()
+  const exportedNames = new Set([...sourceFile.getExportedDeclarations().keys()]);
+  const exports = [...exportedNames];
+
+  const allFunctions = sourceFile.getFunctions();
+  const functions = allFunctions
     .map((fn) => fn.getName())
     .filter((name): name is string => Boolean(name));
-  const classes = sourceFile
-    .getClasses()
+
+  // Extract rich function details
+  const functionDetails: FunctionDetail[] = [];
+  for (const fn of allFunctions) {
+    const fnName = fn.getName();
+    if (!fnName) continue;
+
+    const params = fn.getParameters().map((p) => ({
+      name: p.getName(),
+      type: p.getType().getText(p).replace(/import\([^)]*\)\./g, '').slice(0, 100),
+    }));
+
+    const returnType = fn.getReturnType().getText(fn).replace(/import\([^)]*\)\./g, '').slice(0, 100);
+
+    // Extract JSDoc description
+    const jsDocs = fn.getJsDocs();
+    const description = jsDocs.length > 0
+      ? jsDocs[0].getDescription().trim().split('\n')[0].slice(0, 200)
+      : '';
+
+    const fnBody = fn.getBody()?.getText() ?? '';
+    const callsInFn = extractCallNames(fnBody);
+
+    functionDetails.push({
+      name: fnName,
+      params,
+      returnType,
+      description,
+      lineNumber: fn.getStartLineNumber(),
+      complexity: computeCyclomaticComplexity(fnBody),
+      isAsync: fn.isAsync(),
+      isExported: exportedNames.has(fnName),
+      callsTo: callsInFn,
+      calledBy: [],
+    });
+  }
+
+  // Also extract arrow functions assigned to const/let/var
+  for (const varDecl of sourceFile.getVariableDeclarations()) {
+    const init = varDecl.getInitializer();
+    if (!init) continue;
+    const kind = init.getKind();
+    if (kind !== SyntaxKind.ArrowFunction && kind !== SyntaxKind.FunctionExpression) continue;
+
+    const fnName = varDecl.getName();
+    if (!fnName || functionDetails.some((d) => d.name === fnName)) continue;
+
+    const arrowFn = init;
+    const params: Array<{ name: string; type: string }> = [];
+    const fnBody = arrowFn.getText();
+
+    // Extract params from arrow function text
+    const paramMatch = fnBody.match(/^\s*(?:async\s+)?\(([^)]*)\)/);
+    if (paramMatch?.[1]) {
+      for (const p of paramMatch[1].split(',')) {
+        const parts = p.trim().split(/\s*:\s*/);
+        if (parts[0]) {
+          params.push({
+            name: parts[0].replace(/[?]/g, '').trim(),
+            type: parts[1]?.trim().slice(0, 100) || 'unknown',
+          });
+        }
+      }
+    }
+
+    const callsInFn = extractCallNames(fnBody);
+    const varStmt = varDecl.getParent().getParent();
+    const isExported = varStmt ? exportedNames.has(fnName) : false;
+    const isAsync = /^\s*async\s/.test(fnBody);
+
+    // JSDoc on the variable statement
+    let description = '';
+    const parent = varDecl.getParent()?.getParent();
+    if (parent && 'getJsDocs' in parent) {
+      const jsDocs = (parent as { getJsDocs: () => Array<{ getDescription: () => string }> }).getJsDocs();
+      if (jsDocs.length > 0) {
+        description = jsDocs[0].getDescription().trim().split('\n')[0].slice(0, 200);
+      }
+    }
+
+    functionDetails.push({
+      name: fnName,
+      params,
+      returnType: 'unknown',
+      description,
+      lineNumber: varDecl.getStartLineNumber(),
+      complexity: computeCyclomaticComplexity(fnBody),
+      isAsync,
+      isExported,
+      callsTo: callsInFn,
+      calledBy: [],
+    });
+
+    if (!functions.includes(fnName)) {
+      functions.push(fnName);
+    }
+  }
+
+  // Extract class details
+  const classNodes = sourceFile.getClasses();
+  const classes = classNodes
     .map((klass) => klass.getName())
     .filter((name): name is string => Boolean(name));
+
+  const classDetails: ClassDetail[] = classNodes
+    .filter((klass) => Boolean(klass.getName()))
+    .map((klass) => ({
+      name: klass.getName()!,
+      methods: klass.getMethods().map((m) => m.getName()).filter(Boolean),
+      properties: klass.getProperties().map((p) => p.getName()).filter(Boolean),
+      extends: klass.getExtends()?.getText() ?? '',
+      implements: klass.getImplements().map((i) => i.getText()),
+      isExported: exportedNames.has(klass.getName()!),
+      lineNumber: klass.getStartLineNumber(),
+    }));
 
   const calls = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).map((callExpression) => {
     const expressionText = callExpression.getExpression().getText();
     const expressionParts = expressionText.split('.');
     return expressionParts[expressionParts.length - 1];
   });
+
+  const interfaces = sourceFile
+    .getInterfaces()
+    .map((iface) => iface.getName())
+    .filter(Boolean);
+
+  const typeAliases = sourceFile
+    .getTypeAliases()
+    .map((ta) => ta.getName())
+    .filter(Boolean);
+
+  const hasDefaultExport = sourceFile.getDefaultExportSymbol() !== undefined;
+
+  // LOC metrics
+  const lines = sourceText.split(/\r?\n/);
+  const linesOfCode = lines.length;
+  const blankLines = lines.filter((l) => l.trim().length === 0).length;
+  const commentLines = lines.filter((l) => {
+    const t = l.trim();
+    return t.startsWith('//') || t.startsWith('/*') || t.startsWith('*') || t.startsWith('#');
+  }).length;
+
+  const complexity = computeCyclomaticComplexity(sourceText);
+
+  // Data flow: what data this file receives (imports) and produces (exports)
+  const dataFlowIn = dedupeSort(imports.filter((i) => i.startsWith('.')));
+  const dataFlowOut = dedupeSort(exports);
 
   const sortedImports = dedupeSort(imports);
   return {
@@ -250,7 +445,34 @@ function analyzeWithTsMorph(
     functions: dedupeSort(functions),
     classes: dedupeSort(classes),
     calls: dedupeSort(calls.filter(Boolean)),
+    linesOfCode,
+    blankLines,
+    commentLines,
+    complexity,
+    interfaces: dedupeSort(interfaces),
+    typeAliases: dedupeSort(typeAliases),
+    hasDefaultExport,
+    functionDetails,
+    classDetails,
+    dataFlowIn,
+    dataFlowOut,
   };
+}
+
+/**
+ * Extracts function call names from a code body text.
+ */
+function extractCallNames(body: string): string[] {
+  const calls: string[] = [];
+  const regex = /\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
+  let match: RegExpExecArray | null;
+  const ignore = new Set(['if', 'for', 'while', 'switch', 'return', 'catch', 'function', 'new', 'typeof', 'void', 'throw', 'delete', 'await', 'import', 'require', 'console', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'Promise', 'Array', 'Object', 'String', 'Number', 'Boolean', 'Map', 'Set', 'Error', 'JSON', 'Math', 'Date', 'RegExp', 'parseInt', 'parseFloat', 'isNaN', 'isFinite']);
+  while ((match = regex.exec(body)) !== null) {
+    if (match[1] && !ignore.has(match[1])) {
+      calls.push(match[1]);
+    }
+  }
+  return [...new Set(calls)].sort();
 }
 
 /**
@@ -276,6 +498,20 @@ function analyzeWithRegexFallback(relativeFilePath: string, size: number, source
     (name) => !['if', 'for', 'while', 'switch', 'return', 'catch', 'function'].includes(name),
   );
 
+  const interfaces = captureRegex(sourceText, /interface\s+([A-Za-z_][A-Za-z0-9_]*)/g);
+  const typeAliases = captureRegex(sourceText, /type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=/g);
+  const hasDefaultExport = /export\s+default\b/.test(sourceText);
+
+  const lines = sourceText.split(/\r?\n/);
+  const linesOfCode = lines.length;
+  const blankLines = lines.filter((l) => l.trim().length === 0).length;
+  const commentLines = lines.filter((l) => {
+    const t = l.trim();
+    return t.startsWith('//') || t.startsWith('/*') || t.startsWith('*') || t.startsWith('#');
+  }).length;
+
+  const complexity = computeCyclomaticComplexity(sourceText);
+
   const sortedImports = dedupeSort(imports);
   return {
     path: relativeFilePath,
@@ -286,6 +522,36 @@ function analyzeWithRegexFallback(relativeFilePath: string, size: number, source
     functions: dedupeSort(functions),
     classes: dedupeSort(classes),
     calls: dedupeSort(calls),
+    linesOfCode,
+    blankLines,
+    commentLines,
+    complexity,
+    interfaces: dedupeSort(interfaces),
+    typeAliases: dedupeSort(typeAliases),
+    hasDefaultExport,
+    functionDetails: dedupeSort(functions).map((name) => ({
+      name,
+      params: [],
+      returnType: 'unknown',
+      description: '',
+      lineNumber: 0,
+      complexity: 1,
+      isAsync: false,
+      isExported: exports.includes(name),
+      callsTo: [],
+      calledBy: [],
+    })),
+    classDetails: dedupeSort(classes).map((name) => ({
+      name,
+      methods: [],
+      properties: [],
+      extends: '',
+      implements: [],
+      isExported: exports.includes(name),
+      lineNumber: 0,
+    })),
+    dataFlowIn: dedupeSort(imports.filter((i) => i.startsWith('.'))),
+    dataFlowOut: dedupeSort(exports),
   };
 }
 
@@ -520,4 +786,33 @@ function ensureSupportedUrl(input: string): void {
   if (!(parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
     throw new Error(`Unsupported repository protocol: ${parsed.protocol}`);
   }
+}
+
+/**
+ * Computes cyclomatic complexity by counting branching constructs.
+ * Returns 1 (baseline) + number of branches.
+ */
+function computeCyclomaticComplexity(sourceText: string): number {
+  const branchPatterns = [
+    /\bif\s*\(/g,
+    /\belse\s+if\s*\(/g,
+    /\bfor\s*\(/g,
+    /\bwhile\s*\(/g,
+    /\bcase\s+/g,
+    /\bcatch\s*\(/g,
+    /\?\?/g,
+    /\?\./g,
+    /&&/g,
+    /\|\|/g,
+    /\?\s*[^:]+\s*:/g,
+  ];
+
+  let count = 1; // baseline
+  for (const pattern of branchPatterns) {
+    const matches = sourceText.match(pattern);
+    if (matches) {
+      count += matches.length;
+    }
+  }
+  return count;
 }
