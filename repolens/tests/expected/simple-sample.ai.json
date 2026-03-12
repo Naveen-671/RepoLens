@@ -1,0 +1,47 @@
+{
+  "fileSummaries": [
+    {
+      "path": "src/authController.ts",
+      "summary": "Handles authentication flow orchestration for login and logout operations.",
+      "features": ["auth", "api"]
+    },
+    {
+      "path": "src/loginForm.tsx",
+      "summary": "Submits login actions from the frontend to the authentication controller.",
+      "features": ["auth", "ui"]
+    },
+    {
+      "path": "src/services/authService.ts",
+      "summary": "Provides token generation and authentication service helpers.",
+      "features": ["auth", "service"]
+    }
+  ],
+  "clusters": [
+    {
+      "name": "auth",
+      "description": "Authentication flow and token handling files.",
+      "representativeFile": "src/authController.ts",
+      "files": [
+        "src/loginForm.tsx",
+        "src/authController.ts",
+        "src/services/authService.ts"
+      ]
+    }
+  ],
+  "architecture": {
+    "architectureType": "layered",
+    "briefExplanation": "UI-facing code calls controller code which depends on service code.",
+    "mainLayers": ["frontend", "api", "services"],
+    "sampleRequestFlow": [
+      "src/loginForm.tsx",
+      "src/authController.ts",
+      "src/services/authService.ts"
+    ]
+  },
+  "criticalFiles": [
+    {
+      "file": "src/authController.ts",
+      "score": 0.95
+    }
+  ]
+}
