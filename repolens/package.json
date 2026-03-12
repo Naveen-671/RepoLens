@@ -3,8 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "AI-powered GitHub repository architecture insight tool.",
+  "keywords": [
+    "ai",
+    "developer-tools",
+    "code-analysis",
+    "architecture-visualization"
+  ],
   "bin": {
-    "repolens": "dist/cli/index.js"
+    "repolens": "./dist/cli/index.js"
   },
   "license": "MIT",
   "packageManager": "pnpm@10.6.1",
