@@ -4,5 +4,6 @@ dist/
 *.log
 .env
 coverage/
-data/results/*.json
+data/repos/
+data/results/**
 !data/results/.gitkeep
