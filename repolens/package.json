@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "AI-powered GitHub repository architecture insight tool.",
+  "bin": {
+    "repolens": "dist/cli/index.js"
+  },
   "license": "MIT",
   "packageManager": "pnpm@10.6.1",
   "engines": {

@@ -43,7 +43,10 @@ vi.mock('../ai/providers', () => {
 describe('CLI smoke test', () => {
   it('writes a result artifact for the sample fixture', async () => {
     const fixturePath = path.resolve(__dirname, 'fixtures', 'simple-sample');
-    const result = await run(fixturePath);
+    const result = await run(fixturePath, {
+      localRepo: true,
+      startServer: false,
+    });
 
     expect(result.fileCount).toBeGreaterThan(0);
     const raw = await fs.readFile(result.artifactPath, 'utf8');
@@ -51,5 +54,25 @@ describe('CLI smoke test', () => {
 
     expect(artifact.repo).toBe(fixturePath);
     expect(artifact.files.length).toBeGreaterThan(0);
+    expect(result.graphArtifactPath.endsWith('graph.json')).toBe(true);
+    expect(result.aiArtifactPath?.endsWith('ai.json')).toBe(true);
+  });
+
+  it('starts the visualization server and responds on /health', async () => {
+    const fixturePath = path.resolve(__dirname, 'fixtures', 'simple-sample');
+    const result = await run(fixturePath, {
+      localRepo: true,
+      noAi: true,
+      port: 3210,
+      startServer: true,
+    });
+
+    const response = await fetch('http://localhost:3210/health');
+    const payload = (await response.json()) as { status: string };
+    expect(payload.status).toBe('ok');
+
+    if (result.closeServer) {
+      await result.closeServer();
+    }
   });
 });
