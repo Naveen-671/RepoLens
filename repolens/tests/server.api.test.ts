@@ -49,7 +49,7 @@ describe('backend API endpoints', () => {
       startServer: false,
     });
 
-    const repoId = path.basename(path.dirname(cliResult.artifactPath));
+    const repoId = cliResult.repoId;
 
     const app = createServer();
     const healthResponse = await request(app).get('/health');

@@ -1,11 +1,11 @@
 import type { Edge, Node } from 'reactflow';
 import type { RepoCluster, RepoEdge, RepoNode } from './types';
 
-const CLUSTER_PALETTE = ['#0f766e', '#b45309', '#4338ca', '#be123c', '#166534', '#7c2d12', '#1d4ed8'];
+const CLUSTER_PALETTE = [
+  '#818cf8', '#34d399', '#fbbf24', '#fb7185', '#22d3ee',
+  '#a78bfa', '#f472b6', '#38bdf8', '#4ade80', '#facc15',
+];
 
-/**
- * Builds a deterministic cluster-to-color map.
- */
 export function buildClusterColorMap(clusters: RepoCluster[]): Map<string, string> {
   const map = new Map<string, string>();
   const sorted = [...clusters].sort((a, b) => a.name.localeCompare(b.name));
@@ -15,9 +15,6 @@ export function buildClusterColorMap(clusters: RepoCluster[]): Map<string, strin
   return map;
 }
 
-/**
- * Converts repository graph data to React Flow nodes and edges.
- */
 export function toReactFlowElements(input: {
   nodes: RepoNode[];
   edges: RepoEdge[];
@@ -32,14 +29,15 @@ export function toReactFlowElements(input: {
 
   const sortedNodes = [...input.nodes].sort((a, b) => a.id.localeCompare(b.id));
   const nodes: Node[] = sortedNodes.map((node, index) => {
-    const clusterColor = node.cluster ? colorMap.get(node.cluster) : '#475569';
+    const clusterColor = node.cluster ? colorMap.get(node.cluster) ?? '#64748b' : '#64748b';
     const faded = node.type === 'external';
+    const isCritical = node.critical === true;
 
     return {
       id: node.id,
       position: {
-        x: (index % 8) * 240,
-        y: Math.floor(index / 8) * 140,
+        x: (index % 6) * 260 + (Math.floor(index / 6) % 2) * 130,
+        y: Math.floor(index / 6) * 160,
       },
       type: 'default',
       data: {
@@ -47,40 +45,43 @@ export function toReactFlowElements(input: {
         summary: node.summary,
       },
       style: {
-        border: `${node.critical ? 3 : 1.5}px solid ${clusterColor ?? '#475569'}`,
+        border: `${isCritical ? 2 : 1}px solid ${clusterColor}`,
         borderRadius: 12,
-        background: faded ? '#e2e8f080' : '#f8fafc',
-        color: '#0f172a',
-        minWidth: 150,
+        background: faded ? 'rgba(30,41,59,0.5)' : 'rgba(17,24,39,0.9)',
+        color: '#f1f5f9',
+        minWidth: 160,
         fontSize: 12,
-        boxShadow: node.critical ? '0 0 0 3px rgba(245, 158, 11, 0.35)' : '0 6px 18px rgba(2, 6, 23, 0.08)',
-        opacity: faded ? 0.55 : 1,
+        fontFamily: "'JetBrains Mono', monospace",
+        fontWeight: isCritical ? 600 : 400,
+        padding: '10px 14px',
+        boxShadow: isCritical
+          ? `0 0 20px ${clusterColor}33, 0 4px 16px rgba(0,0,0,0.4)`
+          : '0 4px 16px rgba(0,0,0,0.3)',
+        opacity: faded ? 0.5 : 1,
       },
     };
   });
 
   const edges: Edge[] = input.edges.map((edge) => {
-    const sourceNode = input.nodes.find((node) => node.id === edge.source);
-    const targetNode = input.nodes.find((node) => node.id === edge.target);
+    const sourceNode = input.nodes.find((n) => n.id === edge.source);
+    const targetNode = input.nodes.find((n) => n.id === edge.target);
     const faded = sourceNode?.type === 'external' || targetNode?.type === 'external';
+    const sourceColor = sourceNode?.cluster ? colorMap.get(sourceNode.cluster) ?? '#64748b' : '#64748b';
 
     return {
       id: `${edge.source}->${edge.target}`,
       source: edge.source,
       target: edge.target,
-      animated: false,
+      animated: !faded,
       style: {
-        stroke: faded ? '#94a3b8' : '#334155',
-        strokeWidth: faded ? 1 : 1.5,
-        opacity: faded ? 0.5 : 0.9,
+        stroke: faded ? '#475569' : sourceColor,
+        strokeWidth: faded ? 1 : 2,
+        opacity: faded ? 0.4 : 0.7,
       },
     };
   });
 
-  return {
-    nodes,
-    edges,
-  };
+  return { nodes, edges };
 }
 
 /**
@@ -115,10 +116,14 @@ function buildCollapsedClusterElements(
         label: `${clusterName} (${clusterSize} files)`,
       },
       style: {
-        border: `2.5px solid ${colorMap.get(clusterName) ?? '#64748b'}`,
+        border: `2px solid ${colorMap.get(clusterName) ?? '#64748b'}`,
         borderRadius: 16,
-        background: '#f8fafc',
+        background: 'rgba(17,24,39,0.9)',
+        color: '#f1f5f9',
         minWidth: 230,
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 13,
+        boxShadow: `0 0 24px ${(colorMap.get(clusterName) ?? '#64748b')}22, 0 4px 16px rgba(0,0,0,0.3)`,
       },
     };
   });
@@ -143,8 +148,11 @@ function buildCollapsedClusterElements(
       id: edgeId,
       source: `cluster:${sourceCluster}`,
       target: `cluster:${targetCluster}`,
+      animated: true,
       style: {
-        stroke: '#334155',
+        stroke: colorMap.get(sourceCluster) ?? '#64748b',
+        strokeWidth: 2,
+        opacity: 0.6,
       },
     });
   }

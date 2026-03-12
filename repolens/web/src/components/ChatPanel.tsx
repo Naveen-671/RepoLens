@@ -17,83 +17,143 @@ interface ChatPanelProps {
   onOpenFile: (path: string) => void;
 }
 
-/**
- * Renders repository onboarding chat and source-linked answers.
- */
 export function ChatPanel({ repoId, onOpenFile }: ChatPanelProps) {
-  const [query, setQuery] = useState('Where is authentication?');
+  const [query, setQuery] = useState('');
   const [result, setResult] = useState<ChatResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!query.trim()) return;
     setLoading(true);
     setError(null);
 
     try {
       const response = await fetch(`/chat/${encodeURIComponent(repoId)}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, topK: 10 }),
       });
-
-      if (!response.ok) {
-        throw new Error('Chat request failed');
-      }
-
+      if (!response.ok) throw new Error('Chat request failed');
       const json = (await response.json()) as ChatResult;
       setResult(json);
     } catch {
-      setError('Chat service unavailable. Try again after generating AI artifacts.');
+      setError('Chat service unavailable. Ensure LLM_API_KEY is configured and AI artifacts are generated.');
     } finally {
       setLoading(false);
     }
   };
 
+  const suggestions = [
+    'How does authentication work?',
+    'What are the main entry points?',
+    'Which files handle data flow?',
+  ];
+
   return (
-    <section className="panel p-5 mt-4" aria-label="chat-panel">
-      <h2 className="panel-title">Onboarding Chat</h2>
-      <form className="mt-3 flex flex-col md:flex-row gap-2" onSubmit={submit}>
+    <section className="panel p-5" aria-label="chat-panel">
+      <h2 className="panel-title">
+        <span style={{ color: 'var(--accent-cyan)', marginRight: '0.4rem' }}>◎</span>
+        Ask AI about this repository
+      </h2>
+      <p style={{ color: 'var(--ink-muted)', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+        Ask questions about architecture, features, and code organization.
+      </p>
+
+      {/* Suggestion chips */}
+      {!result && (
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.85rem' }}>
+          {suggestions.map((s) => (
+            <button key={s} className="small-btn" onClick={() => setQuery(s)}
+              style={{ fontSize: '0.72rem' }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={submit} style={{
+        display: 'flex', gap: '0.5rem', marginTop: '1rem',
+        padding: '0.5rem', background: 'var(--bg-elevated)',
+        borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)',
+      }}>
         <input
-          className="flex-1 border border-slate-300 rounded-lg px-3 py-2"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Ask about repository architecture or feature locations"
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Ask about repository architecture or feature locations..."
+          style={{
+            flex: 1, background: 'transparent', border: 'none', outline: 'none',
+            color: 'var(--ink-primary)', fontFamily: 'var(--font-sans)', fontSize: '0.85rem',
+            padding: '0.4rem 0.5rem',
+          }}
         />
-        <button className="rounded-lg bg-slate-900 text-white px-4 py-2 font-semibold" disabled={loading}>
-          {loading ? 'Thinking...' : 'Ask'}
+        <button type="submit" disabled={loading} style={{
+          background: loading ? 'var(--bg-elevated)' : 'linear-gradient(135deg, var(--accent-indigo), var(--accent-violet))',
+          color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
+          padding: '0.5rem 1.2rem', fontWeight: 700, fontSize: '0.8rem',
+          fontFamily: 'var(--font-sans)', cursor: loading ? 'wait' : 'pointer',
+          transition: 'all 200ms', opacity: loading ? 0.6 : 1,
+        }}>
+          {loading ? '...' : 'Ask'}
         </button>
       </form>
 
-      {error ? <p className="text-red-700 mt-2">{error}</p> : null}
+      {error && (
+        <div style={{
+          marginTop: '0.75rem', padding: '0.65rem 0.85rem',
+          background: 'rgba(251,113,133,0.08)', border: '1px solid rgba(251,113,133,0.2)',
+          borderRadius: 'var(--radius-sm)', color: 'var(--accent-rose)', fontSize: '0.82rem',
+        }}>
+          {error}
+        </div>
+      )}
 
-      {result ? (
-        <div className="mt-4 space-y-3">
-          <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <p className="text-sm text-slate-600">Confidence: {result.confidence.toFixed(2)}</p>
-            <p className="mt-1 text-slate-900">{result.answer}</p>
+      {result && (
+        <div style={{ marginTop: '1rem' }}>
+          {/* Confidence badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
+            <span className={`stat-badge ${result.confidence > 0.7 ? 'stat-badge--emerald' : 'stat-badge--amber'}`}>
+              {(result.confidence * 100).toFixed(0)}% confidence
+            </span>
           </div>
 
-          <h3 className="section-title">Sources</h3>
-          <ul className="space-y-2">
-            {result.sources.map((source) => (
-              <li key={`${source.path}:${source.excerpt}`} className="rounded-lg border border-slate-200 bg-white p-3">
-                <p className="critical-file">{source.path}</p>
-                <p className="text-sm text-slate-700 mt-1">{source.excerpt}</p>
-                <button
-                  className="mt-2 text-sm rounded-md border border-slate-300 px-2 py-1"
-                  onClick={() => onOpenFile(source.path)}
-                >
-                  Open file
-                </button>
-              </li>
-            ))}
-          </ul>
+          {/* Answer */}
+          <div style={{
+            padding: '1rem', borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+            color: 'var(--ink-primary)', fontSize: '0.88rem', lineHeight: 1.6,
+          }}>
+            {result.answer}
+          </div>
+
+          {/* Sources */}
+          {result.sources.length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <h3 className="section-title">Referenced Files</h3>
+              <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.5rem' }}>
+                {result.sources.map((source) => (
+                  <div key={`${source.path}:${source.excerpt.slice(0, 30)}`} style={{
+                    padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span className="critical-file">{source.path}</span>
+                      <button className="small-btn" onClick={() => onOpenFile(source.path)}
+                        style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}>
+                        View
+                      </button>
+                    </div>
+                    <p style={{ color: 'var(--ink-muted)', fontSize: '0.78rem', marginTop: '0.3rem', fontFamily: 'var(--font-mono)' }}>
+                      {source.excerpt}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      ) : null}
+      )}
     </section>
   );
 }

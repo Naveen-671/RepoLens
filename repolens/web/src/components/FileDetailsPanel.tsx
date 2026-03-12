@@ -5,54 +5,94 @@ interface FileDetailsPanelProps {
   selectedNode: RepoNode | null;
 }
 
-/**
- * Shows selected file details from graph interaction.
- */
 export function FileDetailsPanel({ selectedNode }: FileDetailsPanelProps) {
   if (!selectedNode) {
     return (
-      <section className="panel min-h-[180px] p-5" aria-label="file-details-panel">
-        <h2 className="panel-title">File Details</h2>
-        <p className="text-slate-600 mt-2">Select a node in the graph to inspect file metadata and cluster details.</p>
+      <section className="panel p-5" aria-label="file-details-panel" style={{ minHeight: 120 }}>
+        <h2 className="panel-title">
+          <span style={{ color: 'var(--accent-cyan)', marginRight: '0.4rem' }}>⬡</span>
+          File Details
+        </h2>
+        <p style={{ color: 'var(--ink-muted)', marginTop: '0.75rem', fontSize: '0.85rem' }}>
+          Click a node in the graph to inspect file metadata.
+        </p>
       </section>
     );
   }
 
+  const hasSummary = selectedNode.summary && selectedNode.summary !== 'Summary unavailable' && selectedNode.summary !== 'No summary available.';
+
   return (
-    <section className="panel min-h-[180px] p-5" aria-label="file-details-panel">
-      <h2 className="panel-title">File Details</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 text-sm">
+    <section className="panel p-5" aria-label="file-details-panel" style={{ minHeight: 120 }}>
+      <h2 className="panel-title">
+        <span style={{ color: 'var(--accent-cyan)', marginRight: '0.4rem' }}>⬡</span>
+        File Details
+      </h2>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.85rem' }}>
         <div>
           <p className="label">Path</p>
-          <p className="value">{selectedNode.id}</p>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--accent-indigo)' }}>{selectedNode.id}</p>
         </div>
         <div>
           <p className="label">Cluster</p>
-          <p className="value">{selectedNode.cluster ?? 'unclustered'}</p>
+          <span className="cluster-chip" style={{ marginTop: '0.2rem' }}>
+            {selectedNode.cluster ?? 'general'}
+          </span>
         </div>
       </div>
 
-      <p className="label mt-4">Summary</p>
-      <p className="value">{selectedNode.summary ?? 'No summary available.'}</p>
+      {hasSummary && (
+        <div style={{ marginTop: '0.85rem' }}>
+          <p className="label">Summary</p>
+          <p style={{ color: 'var(--ink-secondary)', fontSize: '0.85rem', lineHeight: 1.5, marginTop: '0.2rem' }}>{selectedNode.summary}</p>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.85rem' }}>
         <div>
           <p className="label">Functions</p>
-          <ul className="list-disc list-inside value space-y-1">
-            {(selectedNode.functions ?? []).map((name) => (
-              <li key={name}>{name}</li>
-            ))}
-            {(selectedNode.functions ?? []).length === 0 ? <li>None detected</li> : null}
-          </ul>
+          {(selectedNode.functions ?? []).length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.3rem' }}>
+              {(selectedNode.functions ?? []).map((name) => (
+                <span key={name} style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.72rem',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: 6,
+                  background: 'rgba(52,211,153,0.1)',
+                  border: '1px solid rgba(52,211,153,0.2)',
+                  color: 'var(--accent-emerald)',
+                }}>
+                  {name}()
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p style={{ color: 'var(--ink-muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>None detected</p>
+          )}
         </div>
         <div>
           <p className="label">Imports</p>
-          <ul className="list-disc list-inside value space-y-1">
-            {(selectedNode.imports ?? []).map((name) => (
-              <li key={name}>{name}</li>
-            ))}
-            {(selectedNode.imports ?? []).length === 0 ? <li>None detected</li> : null}
-          </ul>
+          {(selectedNode.imports ?? []).length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.3rem' }}>
+              {(selectedNode.imports ?? []).map((name) => (
+                <span key={name} style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.72rem',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: 6,
+                  background: 'rgba(99,102,241,0.1)',
+                  border: '1px solid rgba(99,102,241,0.15)',
+                  color: 'var(--accent-indigo)',
+                }}>
+                  {name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p style={{ color: 'var(--ink-muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>None detected</p>
+          )}
         </div>
       </div>
     </section>

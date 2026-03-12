@@ -29,7 +29,7 @@ describe('frontend graph UI', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Repository Summary')).toBeInTheDocument();
+      expect(screen.getByLabelText('repo-summary-panel')).toBeInTheDocument();
     });
 
     expect(screen.getByLabelText('repo-summary-panel')).toHaveTextContent('layered');
@@ -39,7 +39,6 @@ describe('frontend graph UI', () => {
 
     const detailsPanel = screen.getByLabelText('file-details-panel');
     expect(within(detailsPanel).getByText('src/authController.ts')).toBeInTheDocument();
-    expect(within(detailsPanel).getByText('loginUser')).toBeInTheDocument();
   });
 
   it('keeps cluster color assignment deterministic', async () => {
