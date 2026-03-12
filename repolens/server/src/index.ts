@@ -9,6 +9,7 @@ import {
   getRepoSummary,
   isLargeGraph,
 } from './repositoryService';
+import { chatWithRepository } from './chatService';
 
 /**
  * Creates the HTTP server app with health endpoints.
@@ -84,6 +85,17 @@ export function createServer() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(404).json({ error: message });
+    }
+  });
+
+  app.post('/chat/:repoId', async (req, res) => {
+    try {
+      const body = req.body as { query?: string; topK?: number };
+      const response = await chatWithRepository(req.params.repoId, body.query ?? '', body.topK ?? 10);
+      res.status(200).json(response);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ error: message });
     }
   });
 

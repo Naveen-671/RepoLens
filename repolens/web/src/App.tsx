@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { loadRepoUiData } from './api';
+import { ChatPanel } from './components/ChatPanel';
 import { FileDetailsPanel } from './components/FileDetailsPanel';
 import { GraphView } from './components/GraphView';
 import { RepoSummaryPanel } from './components/RepoSummaryPanel';
@@ -67,6 +68,12 @@ export default function App() {
       </section>
 
       <FileDetailsPanel selectedNode={selectedNode} />
+      <ChatPanel
+        repoId="sample"
+        onOpenFile={(filePath) => {
+          setSelectedNodeId(filePath);
+        }}
+      />
     </main>
   );
 }
