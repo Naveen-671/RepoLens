@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ChatSource {
   path: string;
@@ -12,166 +13,355 @@ interface ChatResult {
   used_files: string[];
 }
 
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: ChatSource[];
+  confidence?: number;
+  thinking?: string[];
+  timestamp: Date;
+}
+
 interface ChatPanelProps {
   repoId: string;
   onOpenFile: (path: string) => void;
 }
 
+const AGENT_SUGGESTIONS = [
+  { icon: '🏗️', text: 'Explain the architecture of this project', category: 'Architecture' },
+  { icon: '🔀', text: 'How does data flow through this application?', category: 'Data Flow' },
+  { icon: '🔐', text: 'How does authentication work?', category: 'Security' },
+  { icon: '📦', text: 'What are the key dependencies and why?', category: 'Dependencies' },
+  { icon: '🚀', text: 'What are the main entry points?', category: 'Entry Points' },
+  { icon: '🧪', text: 'How is testing set up?', category: 'Testing' },
+  { icon: '⚡', text: 'Find performance bottlenecks', category: 'Performance' },
+  { icon: '🎓', text: 'Explain this project like I\'m a beginner', category: 'Learning' },
+];
+
 export function ChatPanel({ repoId, onOpenFile }: ChatPanelProps) {
   const [query, setQuery] = useState('');
-  const [result, setResult] = useState<ChatResult | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState<Array<{ query: string; result: ChatResult }>>([]);
+  const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!query.trim()) return;
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, thinkingSteps]);
+
+  const submit = async (questionText?: string) => {
+    const text = questionText ?? query;
+    if (!text.trim()) return;
     setLoading(true);
     setError(null);
+    setQuery('');
+
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: text,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+
+    // Simulate thinking steps for agent feel
+    const steps = [
+      '🔍 Searching relevant files...',
+      '📖 Reading source code...',
+      '🧠 Analyzing patterns...',
+      '✍️ Composing answer...',
+    ];
+    setThinkingSteps([]);
+
+    for (let i = 0; i < steps.length; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 400 + Math.random() * 300));
+      setThinkingSteps((prev) => [...prev, steps[i]]);
+    }
 
     try {
       const response = await fetch(`/chat/${encodeURIComponent(repoId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, topK: 10 }),
+        body: JSON.stringify({ query: text, topK: 10 }),
       });
       if (!response.ok) throw new Error('Chat request failed');
       const json = (await response.json()) as ChatResult;
-      setResult(json);
-      setHistory((prev) => [...prev, { query, result: json }]);
-      setQuery('');
+
+      const assistantMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: json.answer,
+        sources: json.sources,
+        confidence: json.confidence,
+        thinking: steps,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
     } catch {
-      setError('Chat service unavailable. To enable AI chat, set the LLM_API_KEY environment variable (supports Groq, OpenAI, or NVIDIA NIM). Create a .env file in the project root with:\n\nLLM_API_KEY=your-api-key\nLLM_PROVIDER=groq');
+      setError('AI agent unavailable. Configure an API key to enable intelligent analysis.');
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'I couldn\'t process that request. Please ensure the AI service is configured.',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setLoading(false);
+      setThinkingSteps([]);
     }
   };
 
-  const suggestions = [
-    'How does authentication work?',
-    'What are the main entry points?',
-    'Which files handle data flow?',
-  ];
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void submit();
+  };
 
   return (
-    <section className="panel p-5" aria-label="chat-panel">
-      <h2 className="panel-title">
-        <span style={{ color: 'var(--accent-cyan)', marginRight: '0.4rem' }}>◎</span>
-        Ask AI about this repository
-      </h2>
-      <p style={{ color: 'var(--ink-muted)', fontSize: '0.8rem', marginTop: '0.35rem' }}>
-        Ask questions about architecture, features, and code organization.
-      </p>
-
-      {/* Suggestion chips */}
-      {!result && (
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.85rem' }}>
-          {suggestions.map((s) => (
-            <button key={s} className="small-btn" onClick={() => setQuery(s)}
-              style={{ fontSize: '0.72rem' }}>
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <form onSubmit={submit} style={{
-        display: 'flex', gap: '0.5rem', marginTop: '1rem',
-        padding: '0.5rem', background: 'var(--bg-elevated)',
-        borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)',
+    <section className="panel p-0 overflow-hidden" aria-label="chat-panel" style={{ display: 'flex', flexDirection: 'column', minHeight: 600 }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '0.5rem',
+        padding: '0.85rem 1.1rem', borderBottom: '1px solid var(--border-subtle)',
       }}>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask about repository architecture or feature locations..."
-          style={{
-            flex: 1, background: 'transparent', border: 'none', outline: 'none',
-            color: 'var(--ink-primary)', fontFamily: 'var(--font-sans)', fontSize: '0.85rem',
-            padding: '0.4rem 0.5rem',
-          }}
-        />
-        <button type="submit" disabled={loading} style={{
-          background: loading ? 'var(--bg-elevated)' : 'linear-gradient(135deg, var(--accent-indigo), var(--accent-violet))',
-          color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
-          padding: '0.5rem 1.2rem', fontWeight: 700, fontSize: '0.8rem',
-          fontFamily: 'var(--font-sans)', cursor: loading ? 'wait' : 'pointer',
-          transition: 'all 200ms', opacity: loading ? 0.6 : 1,
-        }}>
-          {loading ? '...' : 'Ask'}
-        </button>
-      </form>
-
-      {error && (
         <div style={{
-          marginTop: '0.75rem', padding: '0.85rem 1rem',
-          background: 'rgba(251,113,133,0.08)', border: '1px solid rgba(251,113,133,0.2)',
-          borderRadius: 'var(--radius-sm)', fontSize: '0.82rem',
+          width: 36, height: 36, borderRadius: 10, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(52,211,153,0.2) 100%)',
+          fontSize: '1.1rem',
+        }}>🤖</div>
+        <div>
+          <h2 className="panel-title" style={{ margin: 0 }}>
+            RepoLens AI Agent
+          </h2>
+          <p style={{ fontSize: '0.68rem', color: 'var(--ink-muted)', margin: 0 }}>
+            Ask anything about architecture, patterns, and code organization
+          </p>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: loading ? 'var(--accent-amber)' : 'var(--accent-emerald)',
+            animation: loading ? 'pulseGlow 1.5s ease-in-out infinite' : 'none',
+          }} />
+          <span style={{ fontSize: '0.65rem', color: 'var(--ink-muted)', fontWeight: 600 }}>
+            {loading ? 'Analyzing...' : 'Ready'}
+          </span>
+        </div>
+      </div>
+
+      {/* Messages Area */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.1rem', maxHeight: 450 }}>
+        {/* Welcome State */}
+        {messages.length === 0 && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            style={{ textAlign: 'center', padding: '2rem 0' }}
+          >
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🧠</div>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--ink-primary)', marginBottom: '0.4rem' }}>
+              Repository Intelligence Agent
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', maxWidth: 420, margin: '0 auto 1.5rem', lineHeight: 1.6 }}>
+              I analyze the entire codebase to answer questions about architecture, data flow, dependencies, and patterns.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.4rem', maxWidth: 600, margin: '0 auto' }}>
+              {AGENT_SUGGESTIONS.map((s) => (
+                <motion.button key={s.text} whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => void submit(s.text)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    padding: '0.55rem 0.75rem', borderRadius: 10,
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                    cursor: 'pointer', color: 'var(--ink-primary)',
+                    fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: 600,
+                    textAlign: 'left', transition: 'all 200ms',
+                  }}
+                >
+                  <span style={{ fontSize: '1rem', flexShrink: 0 }}>{s.icon}</span>
+                  <div>
+                    <span style={{ display: 'block' }}>{s.text}</span>
+                    <span style={{ fontSize: '0.58rem', color: 'var(--ink-muted)', fontWeight: 500 }}>{s.category}</span>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Message List */}
+        <AnimatePresence>
+          {messages.map((msg) => (
+            <motion.div key={msg.id}
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              style={{
+                marginBottom: '0.85rem',
+                display: 'flex', flexDirection: 'column',
+                alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+              }}
+            >
+              {/* User message */}
+              {msg.role === 'user' && (
+                <div style={{
+                  maxWidth: '80%', padding: '0.65rem 0.95rem', borderRadius: 14,
+                  borderBottomRightRadius: 4,
+                  background: 'linear-gradient(135deg, var(--accent-indigo), var(--accent-violet))',
+                  color: '#fff', fontSize: '0.85rem', lineHeight: 1.55, fontWeight: 500,
+                }}>
+                  {msg.content}
+                </div>
+              )}
+
+              {/* Assistant message */}
+              {msg.role === 'assistant' && (
+                <div style={{ maxWidth: '90%', width: '100%' }}>
+                  {/* Confidence badge */}
+                  {msg.confidence !== undefined && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                      <span style={{ fontSize: '0.8rem' }}>🤖</span>
+                      <span className={`stat-badge ${msg.confidence > 0.7 ? 'stat-badge--emerald' : 'stat-badge--amber'}`}>
+                        {(msg.confidence * 100).toFixed(0)}% confidence
+                      </span>
+                    </div>
+                  )}
+
+                  <div style={{
+                    padding: '0.85rem 1rem', borderRadius: 14, borderBottomLeftRadius: 4,
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                    color: 'var(--ink-primary)', fontSize: '0.85rem', lineHeight: 1.7,
+                  }}>
+                    {msg.content.split('\n').map((line, i) => (
+                      <p key={i} style={{ margin: line ? '0.25rem 0' : '0.5rem 0' }}>{line}</p>
+                    ))}
+                  </div>
+
+                  {/* Referenced Files */}
+                  {msg.sources && msg.sources.length > 0 && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-muted)' }}>
+                        📎 Referenced ({msg.sources.length})
+                      </span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem' }}>
+                        {msg.sources.map((s) => (
+                          <motion.button key={`${s.path}:${s.excerpt.slice(0, 20)}`}
+                            whileHover={{ scale: 1.04 }}
+                            onClick={() => onOpenFile(s.path)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '0.25rem',
+                              padding: '0.25rem 0.5rem', borderRadius: 6,
+                              background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)',
+                              color: 'var(--accent-indigo)', cursor: 'pointer',
+                              fontFamily: 'var(--font-mono)', fontSize: '0.68rem', fontWeight: 600,
+                            }}
+                          >
+                            📄 {s.path.split('/').pop()}
+                          </motion.button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <span style={{ fontSize: '0.55rem', color: 'var(--ink-muted)', marginTop: '0.15rem' }}>
+                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+
+        {/* Thinking Animation */}
+        <AnimatePresence>
+          {loading && thinkingSteps.length > 0 && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              style={{
+                padding: '0.65rem 0.85rem', borderRadius: 12,
+                background: 'rgba(99,102,241,0.06)', border: '1px dashed rgba(99,102,241,0.2)',
+                marginBottom: '0.5rem',
+              }}
+            >
+              <div style={{ display: 'grid', gap: '0.2rem' }}>
+                {thinkingSteps.map((step, i) => (
+                  <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.3rem',
+                      fontSize: '0.72rem', color: 'var(--accent-indigo)',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {step}
+                  </motion.div>
+                ))}
+                <div style={{ display: 'flex', gap: '0.2rem', marginTop: '0.15rem' }}>
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} style={{
+                      width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-indigo)',
+                      animation: `pulseGlow 1.2s ease-in-out ${i * 0.2}s infinite`,
+                    }} />
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div ref={chatEndRef} />
+      </div>
+
+      {/* Error Banner */}
+      {error && !loading && messages.length <= 1 && (
+        <div style={{
+          margin: '0 1.1rem', padding: '0.75rem 0.85rem', borderRadius: 10,
+          background: 'rgba(251,113,133,0.06)', border: '1px solid rgba(251,113,133,0.2)',
         }}>
-          <p style={{ color: 'var(--accent-rose)', fontWeight: 600, marginBottom: '0.5rem' }}>⚠ AI Chat Unavailable</p>
-          <p style={{ color: 'var(--ink-secondary)', whiteSpace: 'pre-line', lineHeight: 1.6 }}>
-            To enable AI-powered chat, configure an API key:
+          <p style={{ color: 'var(--accent-rose)', fontWeight: 700, fontSize: '0.78rem', marginBottom: '0.35rem' }}>
+            ⚠ AI Agent Unavailable
           </p>
           <div style={{
-            marginTop: '0.5rem', padding: '0.6rem 0.8rem', borderRadius: 6,
-            background: 'var(--bg-surface)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+            padding: '0.5rem 0.65rem', borderRadius: 6,
+            background: 'var(--bg-surface)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem',
             color: 'var(--accent-cyan)', lineHeight: 1.8,
           }}>
-            # Create .env file in project root<br />
+            # .env in project root<br />
             LLM_API_KEY=your-api-key<br />
             LLM_PROVIDER=groq  <span style={{ color: 'var(--ink-muted)' }}># groq | openai | nim</span>
           </div>
-          <p style={{ color: 'var(--ink-muted)', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+          <p style={{ color: 'var(--ink-muted)', fontSize: '0.68rem', marginTop: '0.35rem' }}>
             Get a free API key from <span style={{ color: 'var(--accent-indigo)' }}>console.groq.com</span>
           </p>
         </div>
       )}
 
-      {result && (
-        <div style={{ marginTop: '1rem' }}>
-          {/* Confidence badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
-            <span className={`stat-badge ${result.confidence > 0.7 ? 'stat-badge--emerald' : 'stat-badge--amber'}`}>
-              {(result.confidence * 100).toFixed(0)}% confidence
-            </span>
-          </div>
-
-          {/* Answer */}
-          <div style={{
-            padding: '1rem', borderRadius: 'var(--radius-md)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
-            color: 'var(--ink-primary)', fontSize: '0.88rem', lineHeight: 1.6,
-          }}>
-            {result.answer}
-          </div>
-
-          {/* Sources */}
-          {result.sources.length > 0 && (
-            <div style={{ marginTop: '1rem' }}>
-              <h3 className="section-title">Referenced Files</h3>
-              <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.5rem' }}>
-                {result.sources.map((source) => (
-                  <div key={`${source.path}:${source.excerpt.slice(0, 30)}`} style={{
-                    padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)',
-                    background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span className="critical-file">{source.path}</span>
-                      <button className="small-btn" onClick={() => onOpenFile(source.path)}
-                        style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}>
-                        View
-                      </button>
-                    </div>
-                    <p style={{ color: 'var(--ink-muted)', fontSize: '0.78rem', marginTop: '0.3rem', fontFamily: 'var(--font-mono)' }}>
-                      {source.excerpt}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Input */}
+      <form onSubmit={handleSubmit} style={{
+        display: 'flex', gap: '0.5rem', padding: '0.75rem 1.1rem',
+        borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-surface)',
+      }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Ask about architecture, data flow, patterns..."
+          disabled={loading}
+          style={{
+            flex: 1, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+            borderRadius: 10, outline: 'none', padding: '0.55rem 0.75rem',
+            color: 'var(--ink-primary)', fontFamily: 'var(--font-sans)', fontSize: '0.85rem',
+            transition: 'border-color 200ms',
+          }}
+        />
+        <button type="submit" disabled={loading || !query.trim()} style={{
+          background: loading ? 'var(--bg-elevated)' : 'linear-gradient(135deg, var(--accent-indigo), var(--accent-violet))',
+          color: '#fff', border: 'none', borderRadius: 10,
+          padding: '0.55rem 1.4rem', fontWeight: 700, fontSize: '0.82rem',
+          fontFamily: 'var(--font-sans)', cursor: loading ? 'wait' : 'pointer',
+          transition: 'all 200ms', opacity: loading || !query.trim() ? 0.5 : 1,
+        }}>
+          {loading ? '⏳' : '🚀 Ask'}
+        </button>
+      </form>
     </section>
   );
 }

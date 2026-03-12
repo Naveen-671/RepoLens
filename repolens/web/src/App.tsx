@@ -10,9 +10,10 @@ import { RepoOverviewPanel } from './components/RepoOverviewPanel';
 import { FunctionExplorer } from './components/FunctionExplorer';
 import { PackagePanel } from './components/PackagePanel';
 import { DataFlowPanel } from './components/DataFlowPanel';
+import { SchemaView } from './components/SchemaView';
 import type { RepoUiData } from './types';
 
-type TabKey = 'overview' | 'health' | 'graph' | 'functions' | 'dataflow' | 'packages' | 'flow' | 'chat' | 'analyze';
+type TabKey = 'overview' | 'health' | 'graph' | 'functions' | 'dataflow' | 'packages' | 'schemas' | 'flow' | 'chat' | 'analyze';
 
 export default function App() {
   const routeRepoId = useMemo(() => {
@@ -26,6 +27,7 @@ export default function App() {
   const [collapseClusters, setCollapseClusters] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'developer' | 'student'>('student');
 
   const loadRepo = useCallback((id: string) => {
     setRepoData(null);
@@ -117,6 +119,7 @@ export default function App() {
     { key: 'functions', label: 'Functions', icon: '⚡' },
     { key: 'dataflow', label: 'Data Flow', icon: '🔀' },
     { key: 'packages', label: 'Packages', icon: '📦' },
+    { key: 'schemas', label: 'Schemas', icon: '🗄️' },
     { key: 'flow', label: 'Request Flows', icon: '🎬' },
     { key: 'chat', label: 'Ask AI', icon: '🤖' },
     { key: 'analyze', label: 'New Analysis', icon: '➕' },
@@ -150,6 +153,26 @@ export default function App() {
             />
             <span>Collapse</span>
           </label>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.15rem',
+            padding: '0.2rem', borderRadius: 10,
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+          }}>
+            <button onClick={() => setViewMode('student')} style={{
+              padding: '0.35rem 0.7rem', borderRadius: 8, fontSize: '0.72rem',
+              fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+              border: 'none', transition: 'all 200ms',
+              background: viewMode === 'student' ? 'rgba(52,211,153,0.15)' : 'transparent',
+              color: viewMode === 'student' ? 'var(--accent-emerald)' : 'var(--ink-muted)',
+            }}>🎓 Student</button>
+            <button onClick={() => setViewMode('developer')} style={{
+              padding: '0.35rem 0.7rem', borderRadius: 8, fontSize: '0.72rem',
+              fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+              border: 'none', transition: 'all 200ms',
+              background: viewMode === 'developer' ? 'rgba(99,102,241,0.15)' : 'transparent',
+              color: viewMode === 'developer' ? 'var(--accent-indigo)' : 'var(--ink-muted)',
+            }}>💻 Developer</button>
+          </div>
         </div>
       </header>
 
@@ -192,6 +215,54 @@ export default function App() {
       {/* Overview Tab */}
       {activeTab === 'overview' && (
         <div className="animate-fade-in-up">
+          {viewMode === 'student' && overview && (
+            <div style={{
+              marginBottom: '1.25rem', padding: '1.25rem', borderRadius: 16,
+              background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(52,211,153,0.08) 100%)',
+              border: '1px solid var(--border-subtle)',
+            }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--ink-primary)', marginBottom: '0.5rem' }}>
+                🎓 What does this project do?
+              </h2>
+              <p style={{ fontSize: '0.92rem', color: 'var(--ink-secondary)', lineHeight: 1.7 }}>
+                {overview.purpose}
+              </p>
+              {overview.keyInsights && overview.keyInsights.length > 0 && (
+                <div style={{ marginTop: '0.85rem', display: 'grid', gap: '0.35rem' }}>
+                  {overview.keyInsights.slice(0, 4).map((insight, i) => (
+                    <div key={i} style={{
+                      display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
+                      padding: '0.5rem 0.65rem', borderRadius: 10,
+                      background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.1)',
+                    }}>
+                      <span style={{ fontSize: '0.85rem', flexShrink: 0 }}>💡</span>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--ink-secondary)', lineHeight: 1.55 }}>{insight}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {overview.directoryPurposes && overview.directoryPurposes.length > 0 && (
+                <div style={{ marginTop: '0.85rem' }}>
+                  <h3 style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-muted)', marginBottom: '0.4rem' }}>
+                    📁 Folder Guide
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.35rem' }}>
+                    {overview.directoryPurposes.slice(0, 8).map((d) => (
+                      <div key={d.directory} style={{
+                        padding: '0.4rem 0.6rem', borderRadius: 8,
+                        background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                      }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-cyan)' }}>
+                          {d.directory}/
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginLeft: '0.35rem' }}>{d.purpose}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
             <RepoOverviewPanel
               overview={overview}
@@ -311,6 +382,16 @@ export default function App() {
         <div className="animate-fade-in-up">
           <PackagePanel
             packages={repoData.graph.packageDependencies ?? []}
+            onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
+          />
+        </div>
+      )}
+
+      {/* Schemas Tab */}
+      {activeTab === 'schemas' && (
+        <div className="animate-fade-in-up">
+          <SchemaView
+            nodes={repoData.graph.nodes}
             onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
           />
         </div>
