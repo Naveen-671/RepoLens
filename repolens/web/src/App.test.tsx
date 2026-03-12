@@ -28,11 +28,14 @@ describe('frontend graph UI', () => {
   it('renders summary and displays file details after node click', async () => {
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByLabelText('repo-summary-panel')).toBeInTheDocument();
-    });
+    // Default tab is Overview; switch to Architecture to see the graph
+    const archTab = await screen.findByRole('button', { name: /Architecture/ });
+    fireEvent.click(archTab);
 
-    expect(screen.getByLabelText('repo-summary-panel')).toHaveTextContent('layered');
+    // Wait for the graph view to render
+    await waitFor(() => {
+      expect(screen.getByLabelText('graph-view-panel')).toBeInTheDocument();
+    });
 
     const targetNode = await screen.findByRole('button', { name: 'src/authController.ts' });
     fireEvent.click(targetNode);

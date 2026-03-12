@@ -30,7 +30,7 @@ const waitingResolvers: Array<() => void> = [];
  */
 export function createAiProvider(env: NodeJS.ProcessEnv = process.env): AiProvider {
   const provider = normalizeProvider((env.LLM_PROVIDER ?? 'openai') as LlmProvider);
-  const apiKey = env.LLM_API_KEY ?? '';
+  const apiKey = resolveApiKey(provider, env);
   const cacheDir = path.resolve(process.cwd(), env.CACHE_DIR ?? './data/cache');
 
   return {
@@ -68,6 +68,16 @@ export function createAiProvider(env: NodeJS.ProcessEnv = process.env): AiProvid
       return embedding;
     },
   };
+}
+
+/**
+ * Resolves the API key for the given provider, checking provider-specific env vars first.
+ */
+function resolveApiKey(provider: LlmProvider, env: NodeJS.ProcessEnv): string {
+  if (provider === 'groq' && env.GROQ_API_KEY) {
+    return env.GROQ_API_KEY;
+  }
+  return env.LLM_API_KEY ?? '';
 }
 
 /**
@@ -146,7 +156,7 @@ async function requestChatCompletion(
       temperature: options.temperature ?? 0.2,
       max_tokens: options.maxTokens ?? 400,
     },
-    timeout: 20000,
+    timeout: 30000,
   };
 
   const response = await axios(request);
@@ -160,8 +170,14 @@ async function requestChatCompletion(
 
 /**
  * Executes embedding request using provider-compatible endpoint.
+ * Falls back to local trigram hash embeddings for providers without embedding support (e.g. Groq).
  */
 async function requestEmbedding(config: ProviderConfig, text: string): Promise<number[]> {
+  // Groq does not support embeddings — use local trigram hash embedding
+  if (config.provider === 'groq') {
+    return localTrigramEmbedding(text);
+  }
+
   if (!config.apiKey) {
     throw new Error('LLM_API_KEY is required for embeddings');
   }
@@ -189,6 +205,29 @@ async function requestEmbedding(config: ProviderConfig, text: string): Promise<n
   }
 
   return vector as number[];
+}
+
+/**
+ * Generates a deterministic 256-dimension embedding from text using character trigram hashing.
+ * Suitable for cosine similarity ranking when no remote embedding API is available.
+ */
+function localTrigramEmbedding(text: string): number[] {
+  const dims = 256;
+  const vec = new Float64Array(dims);
+  const normalized = text.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+  for (let i = 0; i < normalized.length - 2; i++) {
+    const trigram = normalized.substring(i, i + 3);
+    const hash = createHash('md5').update(trigram).digest();
+    const idx = hash.readUInt16BE(0) % dims;
+    vec[idx] += 1;
+  }
+  // L2-normalize the vector
+  let norm = 0;
+  for (let i = 0; i < dims; i++) norm += vec[i] * vec[i];
+  norm = Math.sqrt(norm) || 1;
+  const result: number[] = [];
+  for (let i = 0; i < dims; i++) result.push(vec[i] / norm);
+  return result;
 }
 
 /**
@@ -222,7 +261,7 @@ function getEmbeddingEndpoint(provider: LlmProvider): string {
  */
 function getDefaultModel(provider: LlmProvider): string {
   if (provider === 'groq') {
-    return 'llama-3.1-8b-instant';
+    return 'llama-3.3-70b-versatile';
   }
   if (provider === 'nim' || provider === 'nvidia') {
     return 'meta/llama-3.1-70b-instruct';

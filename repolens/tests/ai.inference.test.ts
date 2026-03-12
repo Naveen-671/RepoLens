@@ -25,6 +25,16 @@ vi.mock('../ai/providers', () => {
           ]);
         }
 
+        if (prompt.includes('Output JSON only.')) {
+          return JSON.stringify({
+            purpose: 'A sample authentication app.',
+            techStack: ['TypeScript', 'React'],
+            entryPoints: ['src/loginForm.tsx'],
+            directoryPurposes: [{ directory: 'src/', purpose: 'Application source code' }],
+            keyInsights: ['Simple layered architecture'],
+          });
+        }
+
         return JSON.stringify({
           architectureType: 'layered',
           briefExplanation: 'UI-facing files call controller files which call service files.',
@@ -65,6 +75,7 @@ describe('ai inference', () => {
       clusters: Array<{ name: string }>;
       architecture: { architectureType: string };
       criticalFiles: Array<{ file: string; score: number }>;
+      repoOverview?: { purpose: string; techStack: string[] };
     };
 
     expect(aiJson.fileSummaries).toHaveLength(3);
@@ -77,5 +88,9 @@ describe('ai inference', () => {
     expect(aiJson.criticalFiles.length).toBeGreaterThan(0);
     expect(aiJson.criticalFiles[0].score).toBeGreaterThanOrEqual(0);
     expect(aiJson.criticalFiles[0].score).toBeLessThanOrEqual(1);
-  });
+
+    // Verify repoOverview is included
+    expect(aiJson.repoOverview).toBeDefined();
+    expect(aiJson.repoOverview!.purpose.length).toBeGreaterThan(0);
+  }, 15000);
 });

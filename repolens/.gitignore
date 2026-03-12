@@ -3,7 +3,12 @@ dist/
 .DS_Store
 *.log
 .env
+.env.*
 coverage/
+
+# Runtime data (caches, cloned repos, analysis results, logs)
 data/repos/
+data/cache/
+data/logs/
 data/results/**
 !data/results/.gitkeep

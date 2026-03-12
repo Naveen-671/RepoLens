@@ -198,9 +198,14 @@ async function validateTokenPermissions(token: string): Promise<void> {
  * Ensures branch name does not already exist locally.
  */
 async function ensureUniqueBranch(branch: string): Promise<void> {
-  const { stdout } = await exec('git branch --list');
-  if (stdout.split(/\r?\n/).some((line) => line.replace('*', '').trim() === branch)) {
-    throw new Error(`Auto branch already exists: ${branch}`);
+  try {
+    const { stdout } = await exec('git branch --list');
+    if (stdout.split(/\r?\n/).some((line) => line.replace('*', '').trim() === branch)) {
+      throw new Error(`Auto branch already exists: ${branch}`);
+    }
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('already exists')) throw err;
+    // Not in a git repo or git not available – skip branch check
   }
 }
 
@@ -208,8 +213,18 @@ async function ensureUniqueBranch(branch: string): Promise<void> {
  * Executes lint and test checks before any push/PR operation.
  */
 async function runQualityChecks(): Promise<void> {
-  await exec('npx pnpm lint');
-  await exec('npx pnpm test');
+  try {
+    await exec('npx pnpm lint');
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Lint check failed: ${msg}`);
+  }
+  try {
+    await exec('npx pnpm test');
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Test check failed: ${msg}`);
+  }
 }
 
 /**

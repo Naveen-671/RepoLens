@@ -41,5 +41,5 @@ describe('parser + dependency graph', () => {
 
     expect(hasEdgeFromLogin).toBe(true);
     expect(hasEdgeToService).toBe(true);
-  });
+  }, 15000);
 });

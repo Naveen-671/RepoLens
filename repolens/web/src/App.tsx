@@ -1,11 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadRepoUiData } from './api';
+import { AnalyzePanel } from './components/AnalyzePanel';
 import { ChatPanel } from './components/ChatPanel';
 import { FileDetailsPanel } from './components/FileDetailsPanel';
 import { FlowPanel } from './components/FlowPanel';
 import { GraphView } from './components/GraphView';
-import { RepoSummaryPanel } from './components/RepoSummaryPanel';
+import { HealthDashboard } from './components/HealthDashboard';
+import { RepoOverviewPanel } from './components/RepoOverviewPanel';
+import { FunctionExplorer } from './components/FunctionExplorer';
+import { PackagePanel } from './components/PackagePanel';
+import { DataFlowPanel } from './components/DataFlowPanel';
 import type { RepoUiData } from './types';
+
+type TabKey = 'overview' | 'health' | 'graph' | 'functions' | 'dataflow' | 'packages' | 'flow' | 'chat' | 'analyze';
 
 export default function App() {
   const routeRepoId = useMemo(() => {
@@ -13,22 +20,59 @@ export default function App() {
     return match?.[1] ?? 'sample';
   }, []);
 
+  const [repoId, setRepoId] = useState(routeRepoId);
   const [repoData, setRepoData] = useState<RepoUiData | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [collapseClusters, setCollapseClusters] = useState(false);
-  const [activeTab, setActiveTab] = useState<'graph' | 'flow' | 'chat'>('graph');
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+
+  const loadRepo = useCallback((id: string) => {
+    setRepoData(null);
+    void loadRepoUiData(id).then((data) => {
+      setRepoData(data);
+      setRepoId(id);
+      setSelectedNodeId(data.graph.nodes[0]?.id ?? null);
+      setActiveTab('overview');
+      setSelectedCluster(null);
+    });
+  }, []);
 
   useEffect(() => {
-    void loadRepoUiData(routeRepoId).then((data) => {
-      setRepoData(data);
-      setSelectedNodeId(data.graph.nodes[0]?.id ?? null);
-    });
-  }, [routeRepoId]);
+    loadRepo(routeRepoId);
+  }, [routeRepoId, loadRepo]);
 
   const selectedNode = useMemo(() => {
     if (!repoData || !selectedNodeId) return null;
     return repoData.graph.nodes.find((node) => node.id === selectedNodeId) ?? null;
   }, [repoData, selectedNodeId]);
+
+  // Filtered graph data for sub-dependency viewing
+  const filteredGraph = useMemo(() => {
+    if (!repoData) return null;
+    if (!selectedCluster) return repoData.graph;
+
+    const cluster = repoData.graph.clusters.find((c) => c.name === selectedCluster);
+    if (!cluster) return repoData.graph;
+
+    const clusterNodeSet = new Set(cluster.nodes);
+    const filteredNodes = repoData.graph.nodes.filter((n) => clusterNodeSet.has(n.id));
+    const filteredEdges = repoData.graph.edges.filter(
+      (e) => clusterNodeSet.has(e.source) || clusterNodeSet.has(e.target),
+    );
+
+    return {
+      ...repoData.graph,
+      nodes: filteredNodes,
+      edges: filteredEdges,
+      clusters: [cluster],
+    };
+  }, [repoData, selectedCluster]);
+
+  const handleAnalysisComplete = useCallback((newRepoId: string) => {
+    window.history.pushState({}, '', `/visualization/flow/${newRepoId}`);
+    loadRepo(newRepoId);
+  }, [loadRepo]);
 
   if (!repoData) {
     return (
@@ -42,10 +86,19 @@ export default function App() {
     );
   }
 
-  const tabs = [
-    { key: 'graph' as const, label: 'Architecture', icon: '◈' },
-    { key: 'flow' as const, label: 'Request Flows', icon: '▸' },
-    { key: 'chat' as const, label: 'Ask AI', icon: '◎' },
+  const metrics = repoData.graph.repoMetrics;
+  const overview = repoData.graph.repoOverview;
+
+  const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
+    { key: 'overview', label: 'Overview', icon: '◈' },
+    { key: 'health', label: 'Health', icon: '◇' },
+    { key: 'graph', label: 'Architecture', icon: '◉' },
+    { key: 'functions', label: 'Functions', icon: '⨍' },
+    { key: 'dataflow', label: 'Data Flow', icon: '⇢' },
+    { key: 'packages', label: 'Packages', icon: '☷' },
+    { key: 'flow', label: 'Request Flows', icon: '▸' },
+    { key: 'chat', label: 'Ask AI', icon: '◎' },
+    { key: 'analyze', label: 'New Analysis', icon: '⊕' },
   ];
 
   return (
@@ -53,13 +106,20 @@ export default function App() {
       <header className="page-header">
         <div>
           <h1 className="brand-title">RepoLens</h1>
-          <p className="brand-subtitle">Architecture at a glance for fast engineering decisions</p>
+          <p className="brand-subtitle">Architecture intelligence for engineering teams</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', gap: '0.35rem' }}>
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
             <span className="stat-badge stat-badge--indigo">{repoData.graph.nodes.length} files</span>
-            <span className="stat-badge stat-badge--emerald">{repoData.graph.edges.length} deps</span>
+            <span className="stat-badge stat-badge--emerald">
+              {metrics ? `${(metrics.totalLinesOfCode / 1000).toFixed(1)}K LOC` : `${repoData.graph.edges.length} deps`}
+            </span>
             <span className="stat-badge stat-badge--violet">{repoData.summary.featureClusters.length} clusters</span>
+            {metrics && (
+              <span className={`stat-badge ${metrics.avgHealthScore >= 0.85 ? 'stat-badge--emerald' : metrics.avgHealthScore >= 0.65 ? 'stat-badge--amber' : 'stat-badge--rose'}`}>
+                {Math.round(metrics.avgHealthScore * 100)}% health
+              </span>
+            )}
           </div>
           <label className="toggle-row">
             <input
@@ -82,6 +142,7 @@ export default function App() {
         borderRadius: 'var(--radius-md)',
         border: '1px solid var(--border-subtle)',
         width: 'fit-content',
+        flexWrap: 'wrap',
       }}>
         {tabs.map((tab) => (
           <button
@@ -107,39 +168,154 @@ export default function App() {
         ))}
       </nav>
 
-      {activeTab === 'graph' && (
+      {/* Overview Tab */}
+      {activeTab === 'overview' && (
         <div className="animate-fade-in-up">
-          <section className="layout-grid">
-            <RepoSummaryPanel summary={repoData.summary} />
-            <GraphView
-              nodes={repoData.graph.nodes}
-              edges={repoData.graph.edges}
-              clusters={repoData.graph.clusters}
-              collapseClusters={collapseClusters}
-              onNodeClick={setSelectedNodeId}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+            <RepoOverviewPanel
+              overview={overview}
+              metrics={metrics}
+              summary={repoData.summary}
+              onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
             />
-          </section>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {metrics && (
+                <HealthDashboard metrics={metrics} onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Health Tab */}
+      {activeTab === 'health' && metrics && (
+        <div className="animate-fade-in-up">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+            <HealthDashboard metrics={metrics} onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <RepoOverviewPanel
+                overview={overview}
+                metrics={undefined}
+                summary={repoData.summary}
+                onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
+              />
+            </div>
+          </div>
           <div style={{ marginTop: '1.25rem' }}>
             <FileDetailsPanel selectedNode={selectedNode} />
           </div>
         </div>
       )}
 
+      {activeTab === 'health' && !metrics && (
+        <div className="animate-fade-in-up">
+          <RepoOverviewPanel
+            overview={overview}
+            metrics={undefined}
+            summary={repoData.summary}
+            onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
+          />
+        </div>
+      )}
+
+      {/* Architecture Tab with Cluster Filter */}
+      {activeTab === 'graph' && filteredGraph && (
+        <div className="animate-fade-in-up">
+          {/* Cluster sub-graph selector */}
+          {repoData.graph.clusters.length > 1 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.35rem',
+              marginBottom: '0.85rem', flexWrap: 'wrap',
+            }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Focus:
+              </span>
+              <button
+                onClick={() => setSelectedCluster(null)}
+                className={selectedCluster === null ? 'cluster-chip cluster-chip--active' : 'cluster-chip'}
+                style={{ cursor: 'pointer', border: 'none', fontFamily: 'var(--font-sans)' }}
+              >
+                All ({repoData.graph.nodes.length})
+              </button>
+              {repoData.graph.clusters.map((cluster) => (
+                <button
+                  key={cluster.name}
+                  onClick={() => setSelectedCluster(selectedCluster === cluster.name ? null : cluster.name)}
+                  className={selectedCluster === cluster.name ? 'cluster-chip cluster-chip--active' : 'cluster-chip'}
+                  style={{ cursor: 'pointer', border: 'none', fontFamily: 'var(--font-sans)' }}
+                >
+                  {cluster.name} ({cluster.nodes.length})
+                </button>
+              ))}
+            </div>
+          )}
+          <GraphView
+            nodes={filteredGraph.nodes}
+            edges={filteredGraph.edges}
+            clusters={filteredGraph.clusters}
+            collapseClusters={collapseClusters}
+            onNodeClick={setSelectedNodeId}
+          />
+          <div style={{ marginTop: '1.25rem' }}>
+            <FileDetailsPanel selectedNode={selectedNode} />
+          </div>
+        </div>
+      )}
+
+      {/* Functions Tab */}
+      {activeTab === 'functions' && (
+        <div className="animate-fade-in-up">
+          <FunctionExplorer
+            nodes={repoData.graph.nodes}
+            functionFlowEdges={repoData.graph.functionFlowEdges ?? []}
+            onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
+          />
+        </div>
+      )}
+
+      {/* Data Flow Tab */}
+      {activeTab === 'dataflow' && (
+        <div className="animate-fade-in-up">
+          <DataFlowPanel
+            nodes={repoData.graph.nodes}
+            edges={repoData.graph.edges}
+            functionFlowEdges={repoData.graph.functionFlowEdges ?? []}
+            onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
+          />
+        </div>
+      )}
+
+      {/* Packages Tab */}
+      {activeTab === 'packages' && (
+        <div className="animate-fade-in-up">
+          <PackagePanel
+            packageDependencies={repoData.graph.packageDependencies ?? []}
+            onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
+          />
+        </div>
+      )}
+
       {activeTab === 'flow' && (
         <div className="animate-fade-in-up">
-          <FlowPanel repoId={routeRepoId} onStepNodeChange={setSelectedNodeId} />
+          <FlowPanel repoId={repoId} onStepNodeChange={setSelectedNodeId} />
         </div>
       )}
 
       {activeTab === 'chat' && (
         <div className="animate-fade-in-up">
           <ChatPanel
-            repoId={routeRepoId}
+            repoId={repoId}
             onOpenFile={(filePath) => {
               setSelectedNodeId(filePath);
               setActiveTab('graph');
             }}
           />
+        </div>
+      )}
+
+      {activeTab === 'analyze' && (
+        <div className="animate-fade-in-up">
+          <AnalyzePanel onAnalysisComplete={handleAnalysisComplete} />
         </div>
       )}
     </main>

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { analyzeRepository, type AnalyzeOptions } from '../parser';
@@ -218,7 +219,7 @@ function validateInput(input: string, isLocalRepo: boolean): void {
  */
 async function writeGraphArtifact(
   repoHash: string,
-  files: Array<{ path: string; functions: string[]; imports: string[] }>,
+  files: Array<{ path: string; functions: string[]; imports: string[]; classes: string[]; interfaces?: string[]; linesOfCode?: number; complexity?: number; commentLines?: number; exports: string[] }>,
   edges: Array<{ source: string; target: string }>,
 ): Promise<string> {
   const resultDir = path.resolve(process.cwd(), 'data', 'results', repoHash);
@@ -250,8 +251,20 @@ async function writeGraphArtifact(
   }
   const maxConnections = Math.max(...edgeCount.values(), 1);
 
-  const graphArtifact = {
-    nodes: files.map((file) => ({
+  const nodes = files.map((file) => {
+    const loc = file.linesOfCode ?? 0;
+    const complexity = file.complexity ?? 1;
+    const commentRatio = loc > 0 ? (file.commentLines ?? 0) / loc : 0;
+    const sizePenalty = loc > 500 ? Math.min(0.3, (loc - 500) / 2000) : 0;
+    const complexityPenalty = complexity > 15 ? Math.min(0.3, (complexity - 15) / 50) : 0;
+    const commentBonus = Math.min(0.1, commentRatio * 0.5);
+    const exportBonus = file.exports.length > 0 ? 0.05 : 0;
+    const structureBonus = (file.functions.length + file.classes.length) > 0 ? 0.05 : 0;
+    const healthScore = Number(Math.max(0, Math.min(1,
+      1 - sizePenalty - complexityPenalty + commentBonus + exportBonus + structureBonus
+    )).toFixed(2));
+
+    return {
       id: file.path,
       type: 'file',
       summary: file.functions.length > 0
@@ -259,11 +272,50 @@ async function writeGraphArtifact(
         : `${(file.path.split('/').pop() ?? file.path)} module.`,
       functions: file.functions,
       imports: file.imports,
+      classes: file.classes,
+      interfaces: file.interfaces ?? [],
       cluster: clusterMap.get(file.path),
       critical: (edgeCount.get(file.path) ?? 0) / maxConnections > 0.5,
-    })),
+      linesOfCode: loc,
+      complexity,
+      healthScore,
+    };
+  });
+
+  // Repo-wide metrics
+  const totalLinesOfCode = files.reduce((sum, f) => sum + (f.linesOfCode ?? 0), 0);
+  const totalFunctions = files.reduce((sum, f) => sum + f.functions.length, 0);
+  const totalClasses = files.reduce((sum, f) => sum + f.classes.length, 0);
+  const totalInterfaces = files.reduce((sum, f) => sum + (f.interfaces?.length ?? 0), 0);
+  const avgComplexity = files.length > 0
+    ? files.reduce((sum, f) => sum + (f.complexity ?? 1), 0) / files.length : 1;
+  const avgHealthScore = nodes.length > 0
+    ? nodes.reduce((sum, n) => sum + n.healthScore, 0) / nodes.length : 0.5;
+
+  const complexityHotspots = [...files]
+    .sort((a, b) => (b.complexity ?? 1) - (a.complexity ?? 1))
+    .slice(0, 10)
+    .map((f) => ({ file: f.path, complexity: f.complexity ?? 1 }));
+  const largestFiles = [...files]
+    .sort((a, b) => (b.linesOfCode ?? 0) - (a.linesOfCode ?? 0))
+    .slice(0, 10)
+    .map((f) => ({ file: f.path, lines: f.linesOfCode ?? 0 }));
+
+  const graphArtifact = {
+    nodes,
     edges,
     clusters,
+    repoMetrics: {
+      totalFiles: files.length,
+      totalLinesOfCode,
+      totalFunctions,
+      totalClasses,
+      totalInterfaces,
+      avgComplexity: Number(avgComplexity.toFixed(1)),
+      avgHealthScore: Number(avgHealthScore.toFixed(2)),
+      complexityHotspots,
+      largestFiles,
+    },
   };
 
   await writeJsonAtomic(graphArtifactPath, graphArtifact);
