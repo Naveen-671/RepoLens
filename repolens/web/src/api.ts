@@ -5,9 +5,12 @@ import type { RepoGraphResponse, RepoSummaryResponse, RepoUiData } from './types
  */
 export async function loadRepoUiData(repoId: string): Promise<RepoUiData> {
   try {
+    const resolvedRepoId =
+      repoId && repoId !== 'sample' ? repoId : await fetchLatestRepoId().catch(() => 'sample');
+
     const [graph, summary] = await Promise.all([
-      fetchJson<RepoGraphResponse>(`/repo-graph/${encodeURIComponent(repoId)}`),
-      fetchJson<RepoSummaryResponse>(`/repo-summary/${encodeURIComponent(repoId)}`),
+      fetchJson<RepoGraphResponse>(`/repo-graph/${encodeURIComponent(resolvedRepoId)}`),
+      fetchJson<RepoSummaryResponse>(`/repo-summary/${encodeURIComponent(resolvedRepoId)}`),
     ]);
 
     return {
@@ -17,6 +20,14 @@ export async function loadRepoUiData(repoId: string): Promise<RepoUiData> {
   } catch {
     return buildFallbackData();
   }
+}
+
+/**
+ * Retrieves latest analyzed repository id from backend API.
+ */
+async function fetchLatestRepoId(): Promise<string> {
+  const payload = await fetchJson<{ repoId: string }>('/repos/latest');
+  return payload.repoId;
 }
 
 /**
