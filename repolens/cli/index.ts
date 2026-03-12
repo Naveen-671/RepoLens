@@ -1,64 +1,78 @@
-import { createHash } from 'node:crypto';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import fg from 'fast-glob';
+import { analyzeRepository, type AnalyzeOptions } from '../parser';
 
 export interface CliRunResult {
   artifactPath: string;
   repoPath: string;
   fileCount: number;
+  nodeCount: number;
+  edgeCount: number;
 }
 
 /**
- * Runs a local repository scan and writes an initial JSON result artifact.
+ * Runs repository analysis and writes parser/graph JSON artifacts.
  */
-export async function run(repoUrlOrPath: string): Promise<CliRunResult> {
-  const resolvedInput = path.resolve(repoUrlOrPath);
-  const stats = await fs.stat(resolvedInput);
-
-  if (!stats.isDirectory()) {
-    throw new Error(`Input must be a directory path. Received: ${resolvedInput}`);
-  }
-
-  const files = await fg(['**/*'], {
-    cwd: resolvedInput,
-    onlyFiles: true,
-    dot: false,
-    ignore: ['node_modules/**', '.git/**', 'dist/**'],
-  });
-
-  const hash = createHash('sha256').update(resolvedInput).digest('hex').slice(0, 12);
-  const outputDir = path.resolve(process.cwd(), 'data', 'results');
-  await fs.mkdir(outputDir, { recursive: true });
-
-  const artifactPath = path.join(outputDir, `${hash}.json`);
-  const artifact = {
-    input: resolvedInput,
-    createdAt: new Date().toISOString(),
-    fileCount: files.length,
-    files,
-  };
-
-  await fs.writeFile(artifactPath, JSON.stringify(artifact, null, 2), 'utf8');
+export async function run(repoUrlOrPath: string, options: AnalyzeOptions = {}): Promise<CliRunResult> {
+  const result = await analyzeRepository(repoUrlOrPath, options);
 
   return {
-    artifactPath,
-    repoPath: resolvedInput,
-    fileCount: files.length,
+    artifactPath: result.analysisPath,
+    repoPath: result.repoPath,
+    fileCount: result.analysis.files.length,
+    nodeCount: result.analysis.nodes.length,
+    edgeCount: result.analysis.edges.length,
   };
+}
+
+/**
+ * Parses command-line flags used by the Step 2 parser pipeline.
+ */
+export function parseCliArgs(argv: string[]): { input: string; options: AnalyzeOptions } {
+  const input = argv[0];
+  if (!input) {
+    throw new Error('Usage: node ./dist/cli/index.js <github-repo-url-or-local-path> [--depth=1] [--extensions=ts,js] [--force]');
+  }
+
+  const options: AnalyzeOptions = {};
+
+  for (const token of argv.slice(1)) {
+    if (token.startsWith('--depth=')) {
+      const depth = Number(token.split('=')[1]);
+      if (!Number.isFinite(depth) || depth <= 0) {
+        throw new Error(`Invalid --depth value: ${token}`);
+      }
+      options.depth = depth;
+      continue;
+    }
+
+    if (token.startsWith('--extensions=')) {
+      const extensionValue = token.split('=')[1] ?? '';
+      options.extensions = extensionValue
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+      continue;
+    }
+
+    if (token === '--force') {
+      options.force = true;
+      continue;
+    }
+
+    throw new Error(`Unknown argument: ${token}`);
+  }
+
+  return { input, options };
 }
 
 /**
  * Handles command-line invocation of the RepoLens CLI.
  */
 async function main() {
-  const input = process.argv[2];
-  if (!input) {
-    throw new Error('Usage: node ./dist/cli/index.js <github-repo-url-or-local-path>');
-  }
+  const { input, options } = parseCliArgs(process.argv.slice(2));
 
-  const result = await run(input);
+  const result = await run(input, options);
   process.stdout.write(`Artifact written: ${result.artifactPath}\n`);
+  process.stdout.write(`Files: ${result.fileCount}, Nodes: ${result.nodeCount}, Edges: ${result.edgeCount}\n`);
 }
 
 if (require.main === module) {

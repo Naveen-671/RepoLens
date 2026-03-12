@@ -10,9 +10,9 @@ describe('CLI smoke test', () => {
 
     expect(result.fileCount).toBeGreaterThan(0);
     const raw = await fs.readFile(result.artifactPath, 'utf8');
-    const artifact = JSON.parse(raw) as { input: string; files: string[] };
+    const artifact = JSON.parse(raw) as { repo: string; files: Array<{ path: string }> };
 
-    expect(artifact.input).toBe(fixturePath);
+    expect(artifact.repo).toBe(fixturePath);
     expect(artifact.files.length).toBeGreaterThan(0);
   });
 });
