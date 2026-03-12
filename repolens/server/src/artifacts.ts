@@ -67,16 +67,44 @@ export async function writeGraphArtifact(
     return { name: cluster.name, nodes: cluster.files };
   });
 
+  // When AI inference wasn't available, infer clusters from directory structure
+  if (clusters.length === 0) {
+    const dirGroups = new Map<string, string[]>();
+    for (const file of analysis.files) {
+      const parts = file.path.split('/');
+      const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : 'root';
+      const existing = dirGroups.get(dir);
+      if (existing) {
+        existing.push(file.path);
+      } else {
+        dirGroups.set(dir, [file.path]);
+      }
+    }
+    for (const [dir, files] of dirGroups) {
+      const clusterName = dir === 'root' ? 'core' : dir.split('/').pop() ?? dir;
+      clusters.push({ name: clusterName, nodes: files });
+      for (const f of files) { clusterMap.set(f, clusterName); }
+    }
+  }
+
   const graph: RepoGraphPayload = {
-    nodes: analysis.files.map((file) => ({
-      id: file.path,
-      type: 'file',
-      summary: summaryByPath.get(file.path) ?? 'Summary unavailable',
-      functions: file.functions,
-      imports: file.imports,
-      cluster: clusterMap.get(file.path),
-      critical: criticalSet.has(file.path),
-    })),
+    nodes: analysis.files.map((file) => {
+      const aiSummary = summaryByPath.get(file.path);
+      const fileName = file.path.split('/').pop() ?? file.path;
+      const fallbackSummary = file.functions.length > 0
+        ? `Exports ${file.functions.slice(0, 3).join(', ')}${file.functions.length > 3 ? ` and ${file.functions.length - 3} more` : ''}.`
+        : `${fileName} module.`;
+
+      return {
+        id: file.path,
+        type: 'file' as const,
+        summary: aiSummary ?? fallbackSummary,
+        functions: file.functions,
+        imports: file.imports,
+        cluster: clusterMap.get(file.path),
+        critical: criticalSet.has(file.path),
+      };
+    }),
     edges: analysis.edges.map((edge) => ({ source: edge.source, target: edge.target })),
     clusters,
   };

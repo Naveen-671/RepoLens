@@ -43,7 +43,7 @@ export async function run(repoUrlOrPath: string, options: CliRunOptions = {}): P
     throw new Error('Repository too large for CLI defaults. Please narrow the scope or extension set.');
   }
 
-  const graphArtifactPath = await writeGraphArtifact(parserResult.repoHash, parserResult.analysis.nodes, parserResult.analysis.edges);
+  const graphArtifactPath = await writeGraphArtifact(parserResult.repoHash, parserResult.analysis.files, parserResult.analysis.edges);
 
   let aiArtifactPath: string | null = null;
   let clusters: Array<{ name: string; files: string[] }> = [];
@@ -218,17 +218,52 @@ function validateInput(input: string, isLocalRepo: boolean): void {
  */
 async function writeGraphArtifact(
   repoHash: string,
-  nodes: Array<{ id: string }>,
+  files: Array<{ path: string; functions: string[]; imports: string[] }>,
   edges: Array<{ source: string; target: string }>,
 ): Promise<string> {
   const resultDir = path.resolve(process.cwd(), 'data', 'results', repoHash);
   await fs.mkdir(resultDir, { recursive: true });
 
   const graphArtifactPath = path.join(resultDir, 'graph.json');
+
+  // Infer clusters from directory structure
+  const dirGroups = new Map<string, string[]>();
+  for (const file of files) {
+    const parts = file.path.split('/');
+    const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : 'root';
+    const existing = dirGroups.get(dir);
+    if (existing) { existing.push(file.path); } else { dirGroups.set(dir, [file.path]); }
+  }
+  const clusterMap = new Map<string, string>();
+  const clusters: Array<{ name: string; nodes: string[] }> = [];
+  for (const [dir, filePaths] of dirGroups) {
+    const name = dir === 'root' ? 'core' : dir.split('/').pop() ?? dir;
+    clusters.push({ name, nodes: filePaths });
+    for (const fp of filePaths) { clusterMap.set(fp, name); }
+  }
+
+  // Compute criticality from edge connections
+  const edgeCount = new Map<string, number>();
+  for (const edge of edges) {
+    edgeCount.set(edge.target, (edgeCount.get(edge.target) ?? 0) + 1);
+    edgeCount.set(edge.source, (edgeCount.get(edge.source) ?? 0) + 0.5);
+  }
+  const maxConnections = Math.max(...edgeCount.values(), 1);
+
   const graphArtifact = {
-    nodes,
+    nodes: files.map((file) => ({
+      id: file.path,
+      type: 'file',
+      summary: file.functions.length > 0
+        ? `Exports ${file.functions.slice(0, 3).join(', ')}${file.functions.length > 3 ? ` and ${file.functions.length - 3} more` : ''}.`
+        : `${(file.path.split('/').pop() ?? file.path)} module.`,
+      functions: file.functions,
+      imports: file.imports,
+      cluster: clusterMap.get(file.path),
+      critical: (edgeCount.get(file.path) ?? 0) / maxConnections > 0.5,
+    })),
     edges,
-    clusters: [] as Array<{ name: string; nodes: string[] }>,
+    clusters,
   };
 
   await writeJsonAtomic(graphArtifactPath, graphArtifact);
@@ -243,15 +278,22 @@ async function patchGraphClusters(
   clusters: Array<{ name: string; files: string[] }>,
 ): Promise<void> {
   const graph = (await readJsonWithRetry(graphArtifactPath, 3)) as {
-    nodes: Array<{ id: string }>;
+    nodes: Array<{ id: string; cluster?: string }>;
     edges: Array<{ source: string; target: string }>;
     clusters?: Array<{ name: string; nodes: string[] }>;
   };
 
-  graph.clusters = clusters.map((cluster) => ({
-    name: cluster.name,
-    nodes: cluster.files,
-  }));
+  const clusterMap = new Map<string, string>();
+  graph.clusters = clusters.map((cluster) => {
+    for (const f of cluster.files) { clusterMap.set(f, cluster.name); }
+    return { name: cluster.name, nodes: cluster.files };
+  });
+
+  // Also update per-node cluster assignments
+  for (const node of graph.nodes) {
+    const assigned = clusterMap.get(node.id);
+    if (assigned) { node.cluster = assigned; }
+  }
 
   await writeJsonAtomic(graphArtifactPath, graph);
 }

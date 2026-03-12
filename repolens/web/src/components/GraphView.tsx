@@ -12,9 +12,6 @@ interface GraphViewProps {
   onNodeClick: (nodeId: string) => void;
 }
 
-/**
- * Renders repository dependency graph with cluster-aware styling.
- */
 export function GraphView({ nodes, edges, clusters, collapseClusters, onNodeClick }: GraphViewProps) {
   const graph = useMemo(
     () => toReactFlowElements({ nodes, edges, clusters, collapseClusters }),
@@ -28,24 +25,34 @@ export function GraphView({ nodes, edges, clusters, collapseClusters, onNodeClic
   return (
     <section className="panel p-0 overflow-hidden" aria-label="graph-view-panel">
       <div className="graph-header">
-        <h2 className="panel-title">Graph Visualization</h2>
-        <span className="graph-count">{graph.nodes.length} nodes</span>
+        <h2 className="panel-title">
+          <span style={{ color: 'var(--accent-indigo)', marginRight: '0.4rem' }}>◈</span>
+          Dependency Graph
+        </h2>
+        <span className="stat-badge stat-badge--indigo">{graph.nodes.length} nodes</span>
       </div>
-      <div className="h-[500px]">
+      <div style={{ height: 520 }}>
         <ReactFlow
           nodes={graph.nodes}
           edges={graph.edges}
           onNodeClick={handleNodeClick}
           fitView
-          minZoom={0.2}
-          maxZoom={2.2}
+          minZoom={0.15}
+          maxZoom={2.5}
           elementsSelectable
           onlyRenderVisibleElements
           nodesDraggable
+          proOptions={{ hideAttribution: true }}
         >
-          <MiniMap nodeStrokeWidth={3} zoomable pannable />
+          <MiniMap
+            nodeStrokeWidth={3}
+            zoomable
+            pannable
+            nodeColor={() => '#818cf8'}
+            maskColor="rgba(11,15,26,0.7)"
+          />
           <Controls />
-          <Background color="#94a3b8" gap={20} size={1} />
+          <Background color="#1e293b" gap={24} size={1} />
         </ReactFlow>
       </div>
     </section>
