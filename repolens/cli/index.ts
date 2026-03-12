@@ -13,6 +13,7 @@ interface CliRunOptions extends AnalyzeOptions {
 }
 
 export interface CliRunResult {
+  repoId: string;
   artifactPath: string;
   aiArtifactPath: string | null;
   graphArtifactPath: string;
@@ -21,6 +22,7 @@ export interface CliRunResult {
   nodeCount: number;
   edgeCount: number;
   serverUrl?: string;
+  visualizationUrl?: string;
   closeServer?: () => Promise<void>;
 }
 
@@ -69,10 +71,12 @@ export async function run(repoUrlOrPath: string, options: CliRunOptions = {}): P
 
   let closeServer: (() => Promise<void>) | undefined;
   let serverUrl: string | undefined;
+  let visualizationUrl: string | undefined;
   if (options.startServer ?? true) {
     const selectedPort = options.port ?? 3000;
     const server = startServer(selectedPort);
     serverUrl = `http://localhost:${selectedPort}`;
+    visualizationUrl = `${serverUrl}/visualization/flow/${parserResult.repoHash}`;
     closeServer = async () => {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -84,7 +88,7 @@ export async function run(repoUrlOrPath: string, options: CliRunOptions = {}): P
         });
       });
     };
-    process.stdout.write(`Open visualization:\n${serverUrl}\n`);
+    process.stdout.write(`Open visualization:\n${visualizationUrl}\n`);
   }
 
   if (options.autoPr) {
@@ -94,6 +98,7 @@ export async function run(repoUrlOrPath: string, options: CliRunOptions = {}): P
   }
 
   return {
+    repoId: parserResult.repoHash,
     artifactPath: parserResult.analysisPath,
     aiArtifactPath,
     graphArtifactPath,
@@ -102,6 +107,7 @@ export async function run(repoUrlOrPath: string, options: CliRunOptions = {}): P
     nodeCount: parserResult.analysis.nodes.length,
     edgeCount: parserResult.analysis.edges.length,
     serverUrl,
+    visualizationUrl,
     closeServer,
   };
 }
@@ -183,6 +189,9 @@ async function main() {
     process.stdout.write(`AI artifact written: ${result.aiArtifactPath}\n`);
   }
   process.stdout.write(`Graph artifact written: ${result.graphArtifactPath}\n`);
+  if (result.visualizationUrl) {
+    process.stdout.write(`Visualization URL: ${result.visualizationUrl}\n`);
+  }
   process.stdout.write(`Files: ${result.fileCount}, Nodes: ${result.nodeCount}, Edges: ${result.edgeCount}\n`);
 }
 

@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { existsSync } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import compression from 'compression';
 import express from 'express';
 import {
@@ -23,6 +25,35 @@ export function createServer() {
 
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
+  });
+
+  app.get('/repos/latest', async (_req, res) => {
+    try {
+      const resultsRoot = path.resolve(process.cwd(), 'data', 'results');
+      const entries = await fs.readdir(resultsRoot, { withFileTypes: true });
+      const repoFolders = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+      if (repoFolders.length === 0) {
+        res.status(404).json({ error: 'No analyzed repositories found' });
+        return;
+      }
+
+      const ranked = await Promise.all(
+        repoFolders.map(async (repoId) => {
+          const analysisPath = path.join(resultsRoot, repoId, 'analysis.json');
+          const stat = await fs.stat(analysisPath).catch(() => null);
+          return {
+            repoId,
+            modifiedMs: stat?.mtimeMs ?? 0,
+          };
+        }),
+      );
+
+      ranked.sort((a, b) => b.modifiedMs - a.modifiedMs);
+      res.status(200).json({ repoId: ranked[0].repoId });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ error: message });
+    }
   });
 
   app.post('/analyze-repo', async (req, res) => {
@@ -166,6 +197,17 @@ export function createServer() {
   });
 
   app.use('/data/results', express.static(path.resolve(process.cwd(), 'data', 'results')));
+
+  const webDist = path.resolve(process.cwd(), 'dist', 'web');
+  if (existsSync(webDist)) {
+    app.use(express.static(webDist));
+    app.get('/', (_req, res) => {
+      res.sendFile(path.join(webDist, 'index.html'));
+    });
+    app.get('/visualization/flow/:repoId', (_req, res) => {
+      res.sendFile(path.join(webDist, 'index.html'));
+    });
+  }
 
   return app;
 }
