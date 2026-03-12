@@ -210,7 +210,7 @@ async function writeGraphArtifact(
     clusters: [] as Array<{ name: string; nodes: string[] }>,
   };
 
-  await fs.writeFile(graphArtifactPath, JSON.stringify(graphArtifact, null, 2), 'utf8');
+  await writeJsonAtomic(graphArtifactPath, graphArtifact);
   return graphArtifactPath;
 }
 
@@ -221,8 +221,7 @@ async function patchGraphClusters(
   graphArtifactPath: string,
   clusters: Array<{ name: string; files: string[] }>,
 ): Promise<void> {
-  const raw = await fs.readFile(graphArtifactPath, 'utf8');
-  const graph = JSON.parse(raw) as {
+  const graph = (await readJsonWithRetry(graphArtifactPath, 3)) as {
     nodes: Array<{ id: string }>;
     edges: Array<{ source: string; target: string }>;
     clusters?: Array<{ name: string; nodes: string[] }>;
@@ -233,7 +232,44 @@ async function patchGraphClusters(
     nodes: cluster.files,
   }));
 
-  await fs.writeFile(graphArtifactPath, JSON.stringify(graph, null, 2), 'utf8');
+  await writeJsonAtomic(graphArtifactPath, graph);
+}
+
+/**
+ * Writes JSON through a temporary file and rename for atomic updates.
+ */
+async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+  const payload = JSON.stringify(value, null, 2);
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  await fs.writeFile(tempPath, payload, 'utf8');
+
+  try {
+    await fs.rename(tempPath, filePath);
+  } catch (error: unknown) {
+    await fs.writeFile(filePath, payload, 'utf8');
+    await fs.rm(tempPath, { force: true });
+    if (error instanceof Error && !/EPERM|EEXIST/i.test(error.message)) {
+      throw error;
+    }
+  }
+}
+
+/**
+ * Reads JSON with brief retries for concurrent file-write windows.
+ */
+async function readJsonWithRetry(filePath: string, attempts: number): Promise<unknown> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const raw = await fs.readFile(filePath, 'utf8');
+      return JSON.parse(raw);
+    } catch (error: unknown) {
+      lastError = error;
+      await new Promise<void>((resolve) => setTimeout(resolve, 30 * (attempt + 1)));
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 if (require.main === module) {

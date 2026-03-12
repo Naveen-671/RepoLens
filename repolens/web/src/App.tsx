@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { loadRepoUiData } from './api';
 import { ChatPanel } from './components/ChatPanel';
 import { FileDetailsPanel } from './components/FileDetailsPanel';
+import { FlowPanel } from './components/FlowPanel';
 import { GraphView } from './components/GraphView';
 import { RepoSummaryPanel } from './components/RepoSummaryPanel';
 import type { RepoUiData } from './types';
@@ -10,16 +11,21 @@ import type { RepoUiData } from './types';
  * Renders the frontend repository visualization workspace.
  */
 export default function App() {
+  const routeRepoId = useMemo(() => {
+    const match = window.location.pathname.match(/^\/visualization\/flow\/([^/]+)$/);
+    return match?.[1] ?? 'sample';
+  }, []);
+
   const [repoData, setRepoData] = useState<RepoUiData | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [collapseClusters, setCollapseClusters] = useState(false);
 
   useEffect(() => {
-    void loadRepoUiData('sample').then((data) => {
+    void loadRepoUiData(routeRepoId).then((data) => {
       setRepoData(data);
       setSelectedNodeId(data.graph.nodes[0]?.id ?? null);
     });
-  }, []);
+  }, [routeRepoId]);
 
   const selectedNode = useMemo(() => {
     if (!repoData || !selectedNodeId) {
@@ -68,8 +74,9 @@ export default function App() {
       </section>
 
       <FileDetailsPanel selectedNode={selectedNode} />
+      <FlowPanel repoId={routeRepoId} onStepNodeChange={setSelectedNodeId} />
       <ChatPanel
-        repoId="sample"
+        repoId={routeRepoId}
         onOpenFile={(filePath) => {
           setSelectedNodeId(filePath);
         }}
