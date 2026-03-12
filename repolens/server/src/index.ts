@@ -10,6 +10,7 @@ import {
   isLargeGraph,
 } from './repositoryService';
 import { chatWithRepository } from './chatService';
+import { generateRepoFlows, getRepoFlows, resolveFlowDownloadPath } from './flowService';
 
 /**
  * Creates the HTTP server app with health endpoints.
@@ -96,6 +97,37 @@ export function createServer() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(400).json({ error: message });
+    }
+  });
+
+  app.get('/repo-flows/:repoId', async (req, res) => {
+    try {
+      const flows = await getRepoFlows(req.params.repoId);
+      res.status(200).json({ flows });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(404).json({ error: message });
+    }
+  });
+
+  app.post('/repo-flows/:repoId/generate', async (req, res) => {
+    try {
+      const body = req.body as { entryPoint?: string };
+      const flows = await generateRepoFlows(req.params.repoId, body.entryPoint);
+      res.status(200).json({ flows });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  app.get('/repo-flows/:repoId/download/:flowId', (req, res) => {
+    try {
+      const filePath = resolveFlowDownloadPath(req.params.repoId, req.params.flowId);
+      res.download(filePath);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(404).json({ error: message });
     }
   });
 
