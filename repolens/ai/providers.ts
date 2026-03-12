@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import axios, { type AxiosRequestConfig } from 'axios';
 
-export type LlmProvider = 'groq' | 'nim' | 'openai';
+export type LlmProvider = 'groq' | 'nim' | 'nvidia' | 'openai';
 
 export interface GenerateOptions {
   maxTokens?: number;
@@ -29,7 +29,7 @@ const waitingResolvers: Array<() => void> = [];
  * Creates a provider-agnostic AI adapter from environment variables.
  */
 export function createAiProvider(env: NodeJS.ProcessEnv = process.env): AiProvider {
-  const provider = (env.LLM_PROVIDER ?? 'openai') as LlmProvider;
+  const provider = normalizeProvider((env.LLM_PROVIDER ?? 'openai') as LlmProvider);
   const apiKey = env.LLM_API_KEY ?? '';
   const cacheDir = path.resolve(process.cwd(), env.CACHE_DIR ?? './data/cache');
 
@@ -198,7 +198,7 @@ function getChatEndpoint(provider: LlmProvider): string {
   if (provider === 'groq') {
     return 'https://api.groq.com/openai/v1/chat/completions';
   }
-  if (provider === 'nim') {
+  if (provider === 'nim' || provider === 'nvidia') {
     return 'https://integrate.api.nvidia.com/v1/chat/completions';
   }
   return 'https://api.openai.com/v1/chat/completions';
@@ -211,7 +211,7 @@ function getEmbeddingEndpoint(provider: LlmProvider): string {
   if (provider === 'groq') {
     return 'https://api.groq.com/openai/v1/embeddings';
   }
-  if (provider === 'nim') {
+  if (provider === 'nim' || provider === 'nvidia') {
     return 'https://integrate.api.nvidia.com/v1/embeddings';
   }
   return 'https://api.openai.com/v1/embeddings';
@@ -224,7 +224,7 @@ function getDefaultModel(provider: LlmProvider): string {
   if (provider === 'groq') {
     return 'llama-3.1-8b-instant';
   }
-  if (provider === 'nim') {
+  if (provider === 'nim' || provider === 'nvidia') {
     return 'meta/llama-3.1-70b-instruct';
   }
   return 'gpt-4o-mini';
@@ -237,10 +237,20 @@ function getDefaultEmbeddingModel(provider: LlmProvider): string {
   if (provider === 'groq') {
     return 'nomic-embed-text-v1.5';
   }
-  if (provider === 'nim') {
+  if (provider === 'nim' || provider === 'nvidia') {
     return 'nvidia/nv-embedqa-e5-v5';
   }
   return 'text-embedding-3-small';
+}
+
+/**
+ * Normalizes accepted provider aliases to supported runtime values.
+ */
+function normalizeProvider(provider: LlmProvider): LlmProvider {
+  if (provider === 'nvidia') {
+    return 'nim';
+  }
+  return provider;
 }
 
 /**
