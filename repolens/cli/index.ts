@@ -9,6 +9,7 @@ interface CliRunOptions extends AnalyzeOptions {
   localRepo?: boolean;
   port?: number;
   startServer?: boolean;
+  autoPr?: boolean;
 }
 
 export interface CliRunResult {
@@ -86,6 +87,12 @@ export async function run(repoUrlOrPath: string, options: CliRunOptions = {}): P
     process.stdout.write(`Open visualization:\n${serverUrl}\n`);
   }
 
+  if (options.autoPr) {
+    process.stdout.write(
+      'Auto-PR mode enabled. Use POST /repo-action/:repoId/pr to submit low-risk approved patches.\n',
+    );
+  }
+
   return {
     artifactPath: parserResult.analysisPath,
     aiArtifactPath,
@@ -105,7 +112,7 @@ export async function run(repoUrlOrPath: string, options: CliRunOptions = {}): P
 export function parseCliArgs(argv: string[]): { input: string; options: CliRunOptions } {
   const input = argv[0];
   if (!input) {
-    throw new Error('Usage: node ./dist/cli/index.js <github-repo-url-or-local-path> [--depth=1] [--extensions=ts,js] [--force] [--port=3000] [--no-ai] [--local-repo]');
+    throw new Error('Usage: node ./dist/cli/index.js <github-repo-url-or-local-path> [--depth=1] [--extensions=ts,js] [--force] [--port=3000] [--no-ai] [--local-repo] [--auto-pr]');
   }
 
   const options: CliRunOptions = {};
@@ -150,6 +157,11 @@ export function parseCliArgs(argv: string[]): { input: string; options: CliRunOp
         throw new Error(`Invalid --port value: ${token}`);
       }
       options.port = rawPort;
+      continue;
+    }
+
+    if (token === '--auto-pr') {
+      options.autoPr = true;
       continue;
     }
 
