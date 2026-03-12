@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import type { FunctionDetail, RepoNode, FunctionFlowEdge } from '../types';
 
 interface FunctionExplorerProps {
@@ -98,19 +99,21 @@ export function FunctionExplorer({ nodes, functionFlowEdges, onFileClick }: Func
           { label: 'Async Functions', value: allFunctions.filter((f) => f.isAsync).length, color: 'var(--accent-cyan)' },
           { label: 'Avg Complexity', value: allFunctions.length > 0 ? (allFunctions.reduce((s, f) => s + f.complexity, 0) / allFunctions.length).toFixed(1) : '0', color: 'var(--accent-amber)' },
           { label: 'Cross-file Calls', value: functionFlowEdges.length, color: 'var(--accent-violet)' },
-        ].map((stat) => (
-          <div key={stat.label} style={{
-            padding: '0.55rem', borderRadius: 'var(--radius-sm)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
-            textAlign: 'center',
-          }}>
+        ].map((stat, i) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.06, type: 'spring', stiffness: 300, damping: 24 }}
+            className="metric-card-animated"
+          >
             <div style={{ fontSize: '1rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: stat.color }}>
               {stat.value}
             </div>
             <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ink-muted)', marginTop: '0.1rem' }}>
               {stat.label}
             </div>
-          </div>
+          </motion.div>
         ))}
       </div>
 

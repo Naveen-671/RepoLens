@@ -373,6 +373,16 @@ body::before {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes fadeInLeft {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -387,12 +397,144 @@ body::before {
   to { transform: rotate(360deg); }
 }
 
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
 .animate-fade-in-up {
   animation: fadeInUp 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
+.animate-fade-in-left {
+  animation: fadeInLeft 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.animate-fade-in-scale {
+  animation: fadeInScale 0.35s ease-out both;
+}
+
 .animate-pulse-glow {
   animation: pulseGlow 3s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ─── Tech Stack Card ─── */
+.tech-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.65rem 0.5rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  transition: all 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: default;
+  min-width: 80px;
+}
+
+.tech-card:hover {
+  border-color: var(--border-active);
+  background: rgba(99,102,241,0.08);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(99,102,241,0.12);
+}
+
+.tech-card i {
+  font-size: 1.6rem;
+  transition: transform 250ms;
+}
+
+.tech-card:hover i {
+  transform: scale(1.15);
+}
+
+.tech-card-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  text-align: center;
+}
+
+/* ─── Metric Card Enhanced ─── */
+.metric-card-animated {
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+  transition: all 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: default;
+}
+
+.metric-card-animated:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-active);
+  box-shadow: 0 4px 16px rgba(99,102,241,0.1);
+}
+
+/* ─── Flow connection line ─── */
+.flow-line {
+  position: relative;
+  padding-left: 2rem;
+}
+
+.flow-line::before {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, var(--accent-indigo), var(--accent-violet), var(--accent-cyan));
+  opacity: 0.3;
+}
+
+/* ─── Stagger delays for children ─── */
+.stagger-children > * {
+  animation: fadeInUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 360ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 420ms; }
+
+/* ─── Gradient text utility ─── */
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-indigo), var(--accent-violet), var(--accent-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Progress bar ─── */
+.progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-surface);
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .spinner {

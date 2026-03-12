@@ -76,11 +76,32 @@ export default function App() {
 
   if (!repoData) {
     return (
-      <main className="page-shell">
-        <div className="loading-card animate-pulse-glow">
-          <div className="spinner" />
-          <h1 className="brand-title mt-6" style={{ textAlign: 'center' }}>RepoLens</h1>
-          <p className="mt-3" style={{ color: 'var(--ink-muted)', textAlign: 'center' }}>Analyzing repository architecture...</p>
+      <main className="page-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <div className="loading-card animate-pulse-glow" style={{ maxWidth: 420 }}>
+          <div className="spinner" style={{ width: 40, height: 40, borderWidth: 4 }} />
+          <h1 className="brand-title" style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '2rem' }}>RepoLens</h1>
+          <p style={{ color: 'var(--ink-secondary)', textAlign: 'center', marginTop: '0.5rem', fontSize: '0.9rem' }}>
+            Architecture intelligence for engineering teams
+          </p>
+          <div style={{
+            marginTop: '1.5rem', padding: '0.5rem 0',
+            display: 'flex', flexDirection: 'column', gap: '0.5rem',
+          }}>
+            {['Scanning repository structure...', 'Analyzing dependencies...', 'Building architecture graph...'].map((step, i) => (
+              <div key={step} className="stagger-children" style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                padding: '0.35rem 0.6rem',
+                opacity: 0.7,
+              }}>
+                <div style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: 'var(--accent-indigo)',
+                  animation: `pulseGlow 2s ease-in-out ${i * 0.5}s infinite`,
+                }} />
+                <span style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>{step}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </main>
     );
@@ -90,15 +111,15 @@ export default function App() {
   const overview = repoData.graph.repoOverview;
 
   const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
-    { key: 'overview', label: 'Overview', icon: '◈' },
-    { key: 'health', label: 'Health', icon: '◇' },
-    { key: 'graph', label: 'Architecture', icon: '◉' },
-    { key: 'functions', label: 'Functions', icon: '⨍' },
-    { key: 'dataflow', label: 'Data Flow', icon: '⇢' },
-    { key: 'packages', label: 'Packages', icon: '☷' },
-    { key: 'flow', label: 'Request Flows', icon: '▸' },
-    { key: 'chat', label: 'Ask AI', icon: '◎' },
-    { key: 'analyze', label: 'New Analysis', icon: '⊕' },
+    { key: 'overview', label: 'Overview', icon: '🔍' },
+    { key: 'health', label: 'Health', icon: '💚' },
+    { key: 'graph', label: 'Architecture', icon: '🏗️' },
+    { key: 'functions', label: 'Functions', icon: '⚡' },
+    { key: 'dataflow', label: 'Data Flow', icon: '🔀' },
+    { key: 'packages', label: 'Packages', icon: '📦' },
+    { key: 'flow', label: 'Request Flows', icon: '🎬' },
+    { key: 'chat', label: 'Ask AI', icon: '🤖' },
+    { key: 'analyze', label: 'New Analysis', icon: '➕' },
   ];
 
   return (
@@ -289,7 +310,7 @@ export default function App() {
       {activeTab === 'packages' && (
         <div className="animate-fade-in-up">
           <PackagePanel
-            packageDependencies={repoData.graph.packageDependencies ?? []}
+            packages={repoData.graph.packageDependencies ?? []}
             onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
           />
         </div>

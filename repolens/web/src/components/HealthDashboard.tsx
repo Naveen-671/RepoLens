@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import type { RepoMetrics } from '../types';
 
 interface HealthDashboardProps {
@@ -41,43 +42,42 @@ export function HealthDashboard({ metrics, onFileClick }: HealthDashboardProps) 
         Code Health Dashboard
       </h2>
 
-      {/* Top-level metrics grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-        gap: '0.75rem',
-        marginTop: '1rem',
-      }}>
-        <MetricCard
-          label="Health Score"
-          value={`${healthPct}%`}
-          detail={healthLabel(metrics.avgHealthScore)}
-          color={healthColor(metrics.avgHealthScore)}
-        />
-        <MetricCard
-          label="Total Lines"
-          value={formatNumber(metrics.totalLinesOfCode)}
-          detail={`${metrics.totalFiles} files`}
-          color="var(--accent-indigo)"
-        />
-        <MetricCard
-          label="Avg Complexity"
-          value={metrics.avgComplexity.toFixed(1)}
-          detail={complexityLabel(metrics.avgComplexity)}
-          color={complexityColor(metrics.avgComplexity)}
-        />
-        <MetricCard
-          label="Functions"
-          value={String(metrics.totalFunctions)}
-          detail={`${metrics.totalClasses} classes`}
-          color="var(--accent-violet)"
-        />
-        <MetricCard
-          label="Interfaces"
-          value={String(metrics.totalInterfaces)}
-          detail="Type definitions"
-          color="var(--accent-cyan)"
-        />
+      {/* Health Score Ring + Top Metrics */}
+      <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap' }}>
+        <HealthRing score={metrics.avgHealthScore} />
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: '0.6rem', flex: 1, minWidth: 200,
+        }}>
+          <MetricCard
+            label="Total Lines"
+            value={formatNumber(metrics.totalLinesOfCode)}
+            detail={`${metrics.totalFiles} files`}
+            color="var(--accent-indigo)"
+            icon="📝"
+          />
+          <MetricCard
+            label="Avg Complexity"
+            value={metrics.avgComplexity.toFixed(1)}
+            detail={complexityLabel(metrics.avgComplexity)}
+            color={complexityColor(metrics.avgComplexity)}
+            icon="🔄"
+          />
+          <MetricCard
+            label="Functions"
+            value={String(metrics.totalFunctions)}
+            detail={`${metrics.totalClasses} classes`}
+            color="var(--accent-violet)"
+            icon="⚡"
+          />
+          <MetricCard
+            label="Interfaces"
+            value={String(metrics.totalInterfaces)}
+            detail="Type definitions"
+            color="var(--accent-cyan)"
+            icon="📐"
+          />
+        </div>
       </div>
 
       {/* Complexity Hotspots */}
@@ -194,22 +194,23 @@ export function HealthDashboard({ metrics, onFileClick }: HealthDashboardProps) 
   );
 }
 
-function MetricCard({ label, value, detail, color }: {
+function MetricCard({ label, value, detail, color, icon }: {
   label: string;
   value: string;
   detail: string;
   color: string;
+  icon: string;
 }) {
   return (
-    <div style={{
-      padding: '0.85rem',
-      borderRadius: 'var(--radius-md)',
-      background: 'var(--bg-elevated)',
-      border: '1px solid var(--border-subtle)',
-      textAlign: 'center',
-    }}>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+      className="metric-card-animated"
+    >
+      <div style={{ fontSize: '0.85rem', marginBottom: '0.15rem' }}>{icon}</div>
       <div style={{
-        fontSize: '1.5rem',
+        fontSize: '1.3rem',
         fontWeight: 800,
         fontFamily: 'var(--font-mono)',
         color,
@@ -218,22 +219,78 @@ function MetricCard({ label, value, detail, color }: {
         {value}
       </div>
       <div style={{
-        fontSize: '0.68rem',
+        fontSize: '0.62rem',
         fontWeight: 700,
         textTransform: 'uppercase',
         letterSpacing: '0.06em',
         color: 'var(--ink-muted)',
-        marginTop: '0.35rem',
+        marginTop: '0.25rem',
       }}>
         {label}
       </div>
       <div style={{
-        fontSize: '0.72rem',
+        fontSize: '0.68rem',
         color,
         fontWeight: 600,
-        marginTop: '0.15rem',
+        marginTop: '0.1rem',
       }}>
         {detail}
+      </div>
+    </motion.div>
+  );
+}
+
+function HealthRing({ score }: { score: number }) {
+  const [animatedScore, setAnimatedScore] = useState(0);
+  const pct = Math.round(animatedScore * 100);
+  const color = healthColor(animatedScore);
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (animatedScore * circumference);
+
+  useEffect(() => {
+    const duration = 1000;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setAnimatedScore(eased * score);
+      if (progress < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [score]);
+
+  return (
+    <div style={{ position: 'relative', width: 130, height: 130, flexShrink: 0 }}>
+      <svg width="130" height="130" viewBox="0 0 130 130">
+        <circle
+          cx="65" cy="65" r={radius}
+          fill="none"
+          stroke="var(--border-subtle)"
+          strokeWidth="8"
+        />
+        <circle
+          cx="65" cy="65" r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          transform="rotate(-90 65 65)"
+          style={{ transition: 'stroke 300ms', filter: `drop-shadow(0 0 6px ${color})` }}
+        />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex',
+        flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <span style={{ fontSize: '1.6rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color }}>
+          {pct}%
+        </span>
+        <span style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-muted)', letterSpacing: '0.05em' }}>
+          {healthLabel(animatedScore)}
+        </span>
       </div>
     </div>
   );

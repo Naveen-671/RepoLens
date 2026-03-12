@@ -22,6 +22,7 @@ export function ChatPanel({ repoId, onOpenFile }: ChatPanelProps) {
   const [result, setResult] = useState<ChatResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState<Array<{ query: string; result: ChatResult }>>([]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -38,8 +39,10 @@ export function ChatPanel({ repoId, onOpenFile }: ChatPanelProps) {
       if (!response.ok) throw new Error('Chat request failed');
       const json = (await response.json()) as ChatResult;
       setResult(json);
+      setHistory((prev) => [...prev, { query, result: json }]);
+      setQuery('');
     } catch {
-      setError('Chat service unavailable. Ensure LLM_API_KEY is configured and AI artifacts are generated.');
+      setError('Chat service unavailable. To enable AI chat, set the LLM_API_KEY environment variable (supports Groq, OpenAI, or NVIDIA NIM). Create a .env file in the project root with:\n\nLLM_API_KEY=your-api-key\nLLM_PROVIDER=groq');
     } finally {
       setLoading(false);
     }
@@ -101,11 +104,26 @@ export function ChatPanel({ repoId, onOpenFile }: ChatPanelProps) {
 
       {error && (
         <div style={{
-          marginTop: '0.75rem', padding: '0.65rem 0.85rem',
+          marginTop: '0.75rem', padding: '0.85rem 1rem',
           background: 'rgba(251,113,133,0.08)', border: '1px solid rgba(251,113,133,0.2)',
-          borderRadius: 'var(--radius-sm)', color: 'var(--accent-rose)', fontSize: '0.82rem',
+          borderRadius: 'var(--radius-sm)', fontSize: '0.82rem',
         }}>
-          {error}
+          <p style={{ color: 'var(--accent-rose)', fontWeight: 600, marginBottom: '0.5rem' }}>⚠ AI Chat Unavailable</p>
+          <p style={{ color: 'var(--ink-secondary)', whiteSpace: 'pre-line', lineHeight: 1.6 }}>
+            To enable AI-powered chat, configure an API key:
+          </p>
+          <div style={{
+            marginTop: '0.5rem', padding: '0.6rem 0.8rem', borderRadius: 6,
+            background: 'var(--bg-surface)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+            color: 'var(--accent-cyan)', lineHeight: 1.8,
+          }}>
+            # Create .env file in project root<br />
+            LLM_API_KEY=your-api-key<br />
+            LLM_PROVIDER=groq  <span style={{ color: 'var(--ink-muted)' }}># groq | openai | nim</span>
+          </div>
+          <p style={{ color: 'var(--ink-muted)', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+            Get a free API key from <span style={{ color: 'var(--accent-indigo)' }}>console.groq.com</span>
+          </p>
         </div>
       )}
 
