@@ -12,7 +12,7 @@ import {
   getRepoSummary,
   isLargeGraph,
 } from './repositoryService';
-import { chatWithRepository } from './chatService';
+import { chatWithRepository, generateGuidedBreakdown } from './chatService';
 import { generateRepoFlows, getRepoFlows, resolveFlowDownloadPath } from './flowService';
 import { createRepoPullRequest, createRevertPullRequest } from './prService';
 import { readArtifactJson, type RepoGraphPayload } from './artifacts';
@@ -157,6 +157,17 @@ export function createServer() {
     try {
       const body = req.body as { query?: string; topK?: number };
       const response = await chatWithRepository(req.params.repoId, body.query ?? '', body.topK ?? 10);
+      res.status(200).json(response);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  app.post('/guided-learning/:repoId', async (req, res) => {
+    try {
+      const body = req.body as { topic?: string };
+      const response = await generateGuidedBreakdown(req.params.repoId, body.topic ?? 'full overview');
       res.status(200).json(response);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

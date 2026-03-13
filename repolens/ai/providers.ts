@@ -77,6 +77,9 @@ function resolveApiKey(provider: LlmProvider, env: NodeJS.ProcessEnv): string {
   if (provider === 'groq' && env.GROQ_API_KEY) {
     return env.GROQ_API_KEY;
   }
+  if ((provider === 'nim' || provider === 'nvidia') && env.NVIDIA_API_KEY) {
+    return env.NVIDIA_API_KEY;
+  }
   return env.LLM_API_KEY ?? '';
 }
 
@@ -143,6 +146,19 @@ async function requestChatCompletion(
   const endpoint = getChatEndpoint(config.provider);
   const model = getDefaultModel(config.provider);
 
+  const data: Record<string, unknown> = {
+    model,
+    messages: [{ role: 'user', content: prompt }],
+    temperature: options.temperature ?? 0.2,
+    max_tokens: options.maxTokens ?? 800,
+  };
+
+  // Enable thinking mode for Qwen models on NVIDIA
+  if ((config.provider === 'nim' || config.provider === 'nvidia') && model.startsWith('qwen/')) {
+    data.chat_template_kwargs = { enable_thinking: true };
+    data.max_tokens = Math.max(options.maxTokens ?? 800, 4096);
+  }
+
   const request: AxiosRequestConfig = {
     method: 'POST',
     url: endpoint,
@@ -150,20 +166,18 @@ async function requestChatCompletion(
       Authorization: `Bearer ${config.apiKey}`,
       'Content-Type': 'application/json',
     },
-    data: {
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: options.temperature ?? 0.2,
-      max_tokens: options.maxTokens ?? 400,
-    },
-    timeout: 30000,
+    data,
+    timeout: 60000,
   };
 
   const response = await axios(request);
-  const message = response.data?.choices?.[0]?.message?.content;
+  let message = response.data?.choices?.[0]?.message?.content;
   if (!message || typeof message !== 'string') {
     throw new Error('Provider returned empty completion content');
   }
+
+  // Strip <think>...</think> blocks from thinking-mode models
+  message = message.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 
   return message;
 }
@@ -264,7 +278,7 @@ function getDefaultModel(provider: LlmProvider): string {
     return 'llama-3.3-70b-versatile';
   }
   if (provider === 'nim' || provider === 'nvidia') {
-    return 'meta/llama-3.1-70b-instruct';
+    return 'qwen/qwen3.5-397b-a17b';
   }
   return 'gpt-4o-mini';
 }

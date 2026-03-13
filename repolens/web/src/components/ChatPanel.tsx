@@ -29,14 +29,14 @@ interface ChatPanelProps {
 }
 
 const AGENT_SUGGESTIONS = [
-  { icon: '🏗️', text: 'Explain the architecture of this project', category: 'Architecture' },
-  { icon: '🔀', text: 'How does data flow through this application?', category: 'Data Flow' },
-  { icon: '🔐', text: 'How does authentication work?', category: 'Security' },
-  { icon: '📦', text: 'What are the key dependencies and why?', category: 'Dependencies' },
-  { icon: '🚀', text: 'What are the main entry points?', category: 'Entry Points' },
-  { icon: '🧪', text: 'How is testing set up?', category: 'Testing' },
-  { icon: '⚡', text: 'Find performance bottlenecks', category: 'Performance' },
-  { icon: '🎓', text: 'Explain this project like I\'m a beginner', category: 'Learning' },
+  { icon: '�', text: 'Explain this project step by step for a beginner', category: 'Learning' },
+  { icon: '🏗️', text: 'What is the architecture and how do the layers connect?', category: 'Architecture' },
+  { icon: '🔀', text: 'Trace the data flow from user request to response', category: 'Data Flow' },
+  { icon: '📦', text: 'What are the key packages and why were they chosen?', category: 'Dependencies' },
+  { icon: '🚀', text: 'Where does the application start and what happens first?', category: 'Entry Points' },
+  { icon: '🔐', text: 'How does authentication and security work?', category: 'Security' },
+  { icon: '🧪', text: 'How is testing set up and what does it cover?', category: 'Testing' },
+  { icon: '⚡', text: 'What design patterns are used in this codebase?', category: 'Patterns' },
 ];
 
 export function ChatPanel({ repoId, onOpenFile }: ChatPanelProps) {
@@ -326,11 +326,11 @@ export function ChatPanel({ repoId, onOpenFile }: ChatPanelProps) {
             color: 'var(--accent-cyan)', lineHeight: 1.8,
           }}>
             # .env in project root<br />
-            LLM_API_KEY=your-api-key<br />
-            LLM_PROVIDER=groq  <span style={{ color: 'var(--ink-muted)' }}># groq | openai | nim</span>
+            LLM_PROVIDER=nim  <span style={{ color: 'var(--ink-muted)' }}># nim (NVIDIA) | groq | openai</span><br />
+            NVIDIA_API_KEY=nvapi-your-key <span style={{ color: 'var(--ink-muted)' }}># or GROQ_API_KEY</span>
           </div>
           <p style={{ color: 'var(--ink-muted)', fontSize: '0.68rem', marginTop: '0.35rem' }}>
-            Get a free API key from <span style={{ color: 'var(--accent-indigo)' }}>console.groq.com</span>
+            Get a free API key from <span style={{ color: 'var(--accent-indigo)' }}>build.nvidia.com</span> or <span style={{ color: 'var(--accent-indigo)' }}>console.groq.com</span>
           </p>
         </div>
       )}

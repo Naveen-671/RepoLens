@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 
 interface FlowStep {
@@ -33,7 +33,7 @@ export function FlowPanel({ repoId, onStepNodeChange }: FlowPanelProps) {
     setStepIndex(0);
   };
 
-  const generateFlows = async () => {
+  const generateFlows = useCallback(async () => {
     setGenerating(true);
     try {
       const res = await fetch(`/repo-flows/${encodeURIComponent(repoId)}/generate`, {
@@ -47,7 +47,7 @@ export function FlowPanel({ repoId, onStepNodeChange }: FlowPanelProps) {
       }
     } catch { /* ignore */ }
     setGenerating(false);
-  };
+  }, [repoId]);
 
   useEffect(() => {
     void (async () => {
@@ -64,7 +64,7 @@ export function FlowPanel({ repoId, onStepNodeChange }: FlowPanelProps) {
         await generateFlows();
       }
     })();
-  }, [repoId]);
+  }, [repoId, generateFlows]);
 
   const activeFlow = useMemo(
     () => flows.find((flow) => flow.id === activeFlowId) ?? flows[0] ?? null,

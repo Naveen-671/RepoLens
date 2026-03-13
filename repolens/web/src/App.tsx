@@ -11,9 +11,10 @@ import { FunctionExplorer } from './components/FunctionExplorer';
 import { PackagePanel } from './components/PackagePanel';
 import { DataFlowPanel } from './components/DataFlowPanel';
 import { SchemaView } from './components/SchemaView';
+import { GuidedLearning } from './components/GuidedLearning';
 import type { RepoUiData } from './types';
 
-type TabKey = 'overview' | 'health' | 'graph' | 'functions' | 'dataflow' | 'packages' | 'schemas' | 'flow' | 'chat' | 'analyze';
+type TabKey = 'overview' | 'health' | 'graph' | 'functions' | 'dataflow' | 'packages' | 'schemas' | 'flow' | 'learn' | 'chat' | 'analyze';
 
 export default function App() {
   const routeRepoId = useMemo(() => {
@@ -121,6 +122,7 @@ export default function App() {
     { key: 'packages', label: 'Packages', icon: '📦' },
     { key: 'schemas', label: 'Schemas', icon: '🗄️' },
     { key: 'flow', label: 'Request Flows', icon: '🎬' },
+    { key: 'learn', label: 'Learn', icon: '🎓' },
     { key: 'chat', label: 'Ask AI', icon: '🤖' },
     { key: 'analyze', label: 'New Analysis', icon: '➕' },
   ];
@@ -400,6 +402,15 @@ export default function App() {
       {activeTab === 'flow' && (
         <div className="animate-fade-in-up">
           <FlowPanel repoId={repoId} onStepNodeChange={setSelectedNodeId} />
+        </div>
+      )}
+
+      {activeTab === 'learn' && (
+        <div className="animate-fade-in-up">
+          <GuidedLearning
+            repoId={repoId}
+            onFileClick={(f) => { setSelectedNodeId(f); setActiveTab('graph'); }}
+          />
         </div>
       )}
 

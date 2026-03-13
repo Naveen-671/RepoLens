@@ -55,7 +55,7 @@ export async function chatWithRepository(
     }));
 
     const prompt = buildRagPrompt(query, contextFiles);
-    const completion = await provider.generate(prompt, { maxTokens: 800, temperature: 0.2 });
+    const completion = await provider.generate(prompt, { maxTokens: 2048, temperature: 0.3 });
     const parsed = parseJsonFromText<{ answer: string; sources: ChatSource[]; confidence: number }>(completion);
 
     const fallbackSources = contextFiles.slice(0, 3).map((file) => ({
@@ -76,6 +76,99 @@ export async function chatWithRepository(
 
     await logQuery(repoId, query, response);
     return response;
+  });
+}
+
+interface GuidedStep {
+  stepNumber: number;
+  title: string;
+  explanation: string;
+  keyFiles: string[];
+  analogy?: string;
+}
+
+interface GuidedBreakdownResponse {
+  steps: GuidedStep[];
+  totalSteps: number;
+}
+
+/**
+ * Generates a step-by-step guided breakdown of the repository for learning.
+ * Each step builds on the previous one, from purpose → tech stack → architecture → data flow.
+ */
+export async function generateGuidedBreakdown(
+  repoId: string,
+  stepTopic: string,
+  provider: AiProvider = createAiProvider(),
+): Promise<GuidedBreakdownResponse> {
+  return runWithRepoConcurrency(repoId, async () => {
+    const [analysis, ai] = await Promise.all([
+      readArtifactJson<{
+        repo: string;
+        files: Array<{ path: string }>;
+      }>(repoId, 'analysis.json'),
+      readArtifactJson<{
+        fileSummaries: Array<{ path: string; summary: string }>;
+        architecture?: { architectureType?: string; briefExplanation?: string; mainLayers?: string[]; sampleRequestFlow?: string[] };
+        clusters?: Array<{ name: string; description?: string; files?: string[] }>;
+        repoOverview?: { purpose?: string; techStack?: string[]; directoryPurposes?: Array<{ directory: string; purpose: string }> };
+      }>(repoId, 'ai.json'),
+    ]);
+
+    const summarySnippets = ai.fileSummaries.slice(0, 25).map(
+      (s) => `${s.path}: ${s.summary}`,
+    ).join('\n');
+
+    const overviewCtx = ai.repoOverview
+      ? `Purpose: ${ai.repoOverview.purpose}\nTech: ${(ai.repoOverview.techStack ?? []).join(', ')}\nDirectories: ${(ai.repoOverview.directoryPurposes ?? []).map((d) => `${d.directory}: ${d.purpose}`).join(', ')}`
+      : '';
+
+    const archCtx = ai.architecture
+      ? `Architecture: ${ai.architecture.architectureType} — ${ai.architecture.briefExplanation}\nLayers: ${(ai.architecture.mainLayers ?? []).join(' → ')}\nFlow: ${(ai.architecture.sampleRequestFlow ?? []).join(' → ')}`
+      : '';
+
+    const clusterCtx = (ai.clusters ?? []).slice(0, 10).map(
+      (c) => `${c.name}: ${c.description ?? 'No description'} (${(c.files ?? []).length} files)`,
+    ).join('\n');
+
+    const prompt = [
+      'You are a patient, friendly coding tutor. A student wants to understand this repository step-by-step.',
+      `Topic they want to learn about: "${stepTopic}"`,
+      '',
+      'Repository context:',
+      overviewCtx,
+      archCtx,
+      '',
+      'Feature clusters:',
+      clusterCtx,
+      '',
+      'File summaries:',
+      summarySnippets,
+      '',
+      'Generate a step-by-step guided breakdown (3-7 steps). Each step should:',
+      '1. Have a clear, short title',
+      '2. Explain in simple language (assume the student is a beginner)',
+      '3. Use real-world analogies when possible',
+      '4. Reference actual files in the repo',
+      '',
+      `Total files in repo: ${analysis.files.length}`,
+      '',
+      'Output JSON:',
+      '{"steps":[{"stepNumber":1,"title":"...","explanation":"...","keyFiles":["path/to/file"],"analogy":"..."},...]}',
+    ].join('\n');
+
+    const completion = await provider.generate(prompt, { maxTokens: 4096, temperature: 0.4 });
+    const parsed = parseJsonFromText<{ steps: GuidedStep[] }>(completion);
+
+    const steps = (parsed?.steps ?? []).map((step, i) => ({
+      stepNumber: step.stepNumber ?? i + 1,
+      title: step.title ?? `Step ${i + 1}`,
+      explanation: step.explanation ?? '',
+      keyFiles: Array.isArray(step.keyFiles) ? step.keyFiles : [],
+      analogy: step.analogy,
+    }));
+
+    return { steps, totalSteps: steps.length };
   });
 }
 
@@ -182,7 +275,9 @@ function buildRagPrompt(
     .join('\n');
 
   return [
-    "You are a senior software engineer. Answer the user's question about this repository concisely (1-6 sentences).",
+    "You are a friendly, expert software engineering tutor helping students and developers understand codebases.",
+    'Answer the user\'s question clearly with examples and analogies when helpful. Structure your response with key points.',
+    'If explaining architecture, use simple terms first, then technical details.',
     'You MUST only use information from the provided context files. For each claim add a source array with {path, short_excerpt}.',
     '',
     'User question:',

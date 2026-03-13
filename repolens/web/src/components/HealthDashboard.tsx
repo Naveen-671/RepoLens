@@ -33,8 +33,6 @@ function complexityColor(avg: number): string {
 }
 
 export function HealthDashboard({ metrics, onFileClick }: HealthDashboardProps) {
-  const healthPct = Math.round(metrics.avgHealthScore * 100);
-
   return (
     <section className="panel p-5" aria-label="health-dashboard">
       <h2 className="panel-title">

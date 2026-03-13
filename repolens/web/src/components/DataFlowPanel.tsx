@@ -269,7 +269,7 @@ function FlowNodeComponent({ data, id }: { data: FlowNodeData; id: string }) {
 }
 
 const nodeTypes: NodeTypes = {
-  flowNode: FlowNodeComponent as any,
+  flowNode: FlowNodeComponent as NodeTypes[string],
 };
 
 /* ─── Layout (topological layering) ─── */
@@ -571,7 +571,7 @@ export function DataFlowPanel({ nodes, edges, functionFlowEdges, onFileClick }: 
             proOptions={{ hideAttribution: true }}
           >
             <MiniMap nodeStrokeWidth={3} zoomable pannable
-              nodeColor={(node: any) => node.data?.color ?? '#64748b'}
+              nodeColor={(node: { data?: { color?: string } }) => node.data?.color ?? '#64748b'}
               maskColor="rgba(11,15,26,0.7)"
             />
             <Controls />
@@ -584,7 +584,7 @@ export function DataFlowPanel({ nodes, edges, functionFlowEdges, onFileClick }: 
       {viewMode === 'layers' && (
         <div style={{ padding: '1.25rem', maxHeight: 560, overflowY: 'auto' }}>
           <LayersView nodes={nodes} edges={edges} onToggleExpand={onToggleExpand}
-            onFileClick={onFileClick} selectedFile={selectedFile}
+            selectedFile={selectedFile}
           />
         </div>
       )}
@@ -712,9 +712,9 @@ export function DataFlowPanel({ nodes, edges, functionFlowEdges, onFileClick }: 
 }
 
 /* ─── Layers View ─── */
-function LayersView({ nodes, edges, onToggleExpand, onFileClick, selectedFile }: {
+function LayersView({ nodes, edges, onToggleExpand, selectedFile }: {
   nodes: RepoNode[]; edges: RepoEdge[];
-  onToggleExpand: (id: string) => void; onFileClick: (path: string) => void;
+  onToggleExpand: (id: string) => void;
   selectedFile: string | null;
 }) {
   const layers = useMemo(() => {
