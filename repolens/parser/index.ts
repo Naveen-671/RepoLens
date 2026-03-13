@@ -207,7 +207,11 @@ export async function analyzeFile(repoPath: string, relativeFilePath: string): P
   const extension = path.extname(relativeFilePath).replace('.', '').toLowerCase();
 
   if (['ts', 'tsx', 'js', 'jsx'].includes(extension)) {
-    return analyzeWithTsMorph(relativeFilePath, stats.size, sourceText, extension);
+    try {
+      return analyzeWithTsMorph(relativeFilePath, stats.size, sourceText, extension);
+    } catch {
+      // ts-morph can crash on certain syntax patterns — fall through to regex
+    }
   }
 
   const treeSitterParsed = await attemptTreeSitterParse(sourceText, extension);
@@ -279,7 +283,12 @@ function analyzeWithTsMorph(
       }
     });
 
-  const exportedNames = new Set([...sourceFile.getExportedDeclarations().keys()]);
+  let exportedNames: Set<string>;
+  try {
+    exportedNames = new Set([...sourceFile.getExportedDeclarations().keys()]);
+  } catch {
+    exportedNames = new Set<string>();
+  }
   const exports = [...exportedNames];
 
   const allFunctions = sourceFile.getFunctions();
@@ -293,12 +302,14 @@ function analyzeWithTsMorph(
     const fnName = fn.getName();
     if (!fnName) continue;
 
-    const params = fn.getParameters().map((p) => ({
-      name: p.getName(),
-      type: p.getType().getText(p).replace(/import\([^)]*\)\./g, '').slice(0, 100),
-    }));
+    const params = fn.getParameters().map((p) => {
+      let type = 'unknown';
+      try { type = p.getType().getText(p).replace(/import\([^)]*\)\./g, '').slice(0, 100); } catch { /* ignore */ }
+      return { name: p.getName(), type };
+    });
 
-    const returnType = fn.getReturnType().getText(fn).replace(/import\([^)]*\)\./g, '').slice(0, 100);
+    let returnType = 'unknown';
+    try { returnType = fn.getReturnType().getText(fn).replace(/import\([^)]*\)\./g, '').slice(0, 100); } catch { /* ignore */ }
 
     // Extract JSDoc description
     const jsDocs = fn.getJsDocs();
@@ -392,15 +403,21 @@ function analyzeWithTsMorph(
 
   const classDetails: ClassDetail[] = classNodes
     .filter((klass) => Boolean(klass.getName()))
-    .map((klass) => ({
-      name: klass.getName()!,
-      methods: klass.getMethods().map((m) => m.getName()).filter(Boolean),
-      properties: klass.getProperties().map((p) => p.getName()).filter(Boolean),
-      extends: klass.getExtends()?.getText() ?? '',
-      implements: klass.getImplements().map((i) => i.getText()),
-      isExported: exportedNames.has(klass.getName()!),
-      lineNumber: klass.getStartLineNumber(),
-    }));
+    .map((klass) => {
+      let extendsName = '';
+      let implementsNames: string[] = [];
+      try { extendsName = klass.getExtends()?.getText() ?? ''; } catch { /* ignore */ }
+      try { implementsNames = klass.getImplements().map((i) => i.getText()); } catch { /* ignore */ }
+      return {
+        name: klass.getName()!,
+        methods: klass.getMethods().map((m) => m.getName()).filter(Boolean),
+        properties: klass.getProperties().map((p) => p.getName()).filter(Boolean),
+        extends: extendsName,
+        implements: implementsNames,
+        isExported: exportedNames.has(klass.getName()!),
+        lineNumber: klass.getStartLineNumber(),
+      };
+    });
 
   const calls = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).map((callExpression) => {
     const expressionText = callExpression.getExpression().getText();
@@ -418,7 +435,8 @@ function analyzeWithTsMorph(
     .map((ta) => ta.getName())
     .filter(Boolean);
 
-  const hasDefaultExport = sourceFile.getDefaultExportSymbol() !== undefined;
+  let hasDefaultExport = false;
+  try { hasDefaultExport = sourceFile.getDefaultExportSymbol() !== undefined; } catch { /* ignore */ }
 
   // LOC metrics
   const lines = sourceText.split(/\r?\n/);
