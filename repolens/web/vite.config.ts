@@ -18,6 +18,7 @@ export default defineConfig({
       '/file': 'http://localhost:3000',
       '/function-details': 'http://localhost:3000',
       '/chat': 'http://localhost:3000',
+      '/guided-learning': 'http://localhost:3000',
       '/data': 'http://localhost:3000',
     },
   },
