@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_BASE } from '../config';
 
 interface ChatSource {
   path: string;
@@ -81,7 +82,7 @@ export function ChatPanel({ repoId, onOpenFile }: ChatPanelProps) {
     }
 
     try {
-      const response = await fetch(`/chat/${encodeURIComponent(repoId)}`, {
+      const response = await fetch(`${API_BASE}/chat/${encodeURIComponent(repoId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: text, topK: 10 }),

@@ -1,4 +1,5 @@
 import type { RepoGraphResponse, RepoSummaryResponse, RepoUiData } from './types';
+import { API_BASE } from './config';
 
 /**
  * Loads graph and summary data for a repository id.
@@ -26,7 +27,7 @@ export async function loadRepoUiData(repoId: string): Promise<RepoUiData> {
  * Triggers analysis of a repository from the frontend.
  */
 export async function analyzeRepoFromUi(repoUrl: string, options: { localRepo?: boolean; noAi?: boolean } = {}): Promise<{ repoId: string }> {
-  const response = await fetch('/analyze-repo', {
+  const response = await fetch(`${API_BASE}/analyze-repo`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ repoUrl, localRepo: options.localRepo, noAi: options.noAi }),
@@ -50,7 +51,7 @@ async function fetchLatestRepoId(): Promise<string> {
  * Fetches and parses JSON payload from an endpoint.
  */
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+  const response = await fetch(`${API_BASE}${url}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch: ${url}`);
   }

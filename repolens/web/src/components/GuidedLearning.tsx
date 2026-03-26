@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_BASE } from '../config';
 
 interface GuidedStep {
   stepNumber: number;
@@ -52,7 +53,7 @@ export function GuidedLearning({ repoId, onFileClick }: GuidedLearningProps) {
     setCompletedSteps(new Set());
 
     try {
-      const res = await fetch(`/guided-learning/${encodeURIComponent(repoId)}`, {
+      const res = await fetch(`${API_BASE}/guided-learning/${encodeURIComponent(repoId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic }),

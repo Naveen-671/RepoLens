@@ -18,12 +18,31 @@ import { createRepoPullRequest, createRevertPullRequest } from './prService';
 import { readArtifactJson, type RepoGraphPayload } from './artifacts';
 
 /**
+ * CORS middleware — allows cross-origin requests from the Vercel frontend.
+ */
+function corsMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const allowedOrigins = process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:5173'];
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+  next();
+}
+
+/**
  * Creates the HTTP server app with health endpoints.
  */
 export function createServer() {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
   app.use(compression());
+  app.use(corsMiddleware);
 
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });

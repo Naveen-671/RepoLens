@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { API_BASE } from '../config';
 
 interface FlowStep {
   nodeId: string;
@@ -36,7 +37,7 @@ export function FlowPanel({ repoId, onStepNodeChange }: FlowPanelProps) {
   const generateFlows = useCallback(async () => {
     setGenerating(true);
     try {
-      const res = await fetch(`/repo-flows/${encodeURIComponent(repoId)}/generate`, {
+      const res = await fetch(`${API_BASE}/repo-flows/${encodeURIComponent(repoId)}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -52,7 +53,7 @@ export function FlowPanel({ repoId, onStepNodeChange }: FlowPanelProps) {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch(`/repo-flows/${encodeURIComponent(repoId)}`);
+        const res = await fetch(`${API_BASE}/repo-flows/${encodeURIComponent(repoId)}`);
         const json = (await res.json()) as { flows?: FlowDefinition[] };
         const loadedFlows = json.flows ?? [];
         if (loadedFlows.length > 0) {
